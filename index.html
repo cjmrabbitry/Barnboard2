@@ -284,6 +284,7 @@
 <div class="profile-view" id="profileView"></div>
 <div class="photo-viewer" id="photoViewer"></div>
 <input type="file" id="photoFileInput" accept="image/*" style="display:none;">
+<input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none;">
 
 <script>
 if(!window.storage){
@@ -2049,13 +2050,14 @@ function openAddPlannedSheet(presetDoeId){
 }
 
 function openMoreSheet(){
-  const items=[['add','Add rabbit'],['planned','Planned breedings'],['forsale','For sale'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
+  const items=[['add','Add rabbit'],['import','Import from CSV'],['planned','Planned breedings'],['forsale','For sale'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}`);
   document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.more;
     if(k==='add') openAddSheet();
     else if(k==='merge') openMergeSheet();
+    else if(k==='import') openImportCsvSheet();
     else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
   });
 }
@@ -2526,6 +2528,175 @@ function wireCropMode(r, photo){
     renderPhotoViewer(); renderProfile();
     showToast('Photo cropped');
   };
+}
+
+/* ============================================================
+   CSV IMPORT — parses a CSV, auto-matches columns to fields,
+   and asks how to handle any name collisions before committing.
+   ============================================================ */
+function parseCSV(text){
+  if(text.charCodeAt(0)===0xFEFF) text = text.slice(1); // strip BOM from Excel exports
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for(let i=0;i<text.length;i++){
+    const c = text[i], next = text[i+1];
+    if(inQuotes){
+      if(c === '"'){ if(next === '"'){ field += '"'; i++; } else inQuotes = false; }
+      else field += c;
+    } else {
+      if(c === '"') inQuotes = true;
+      else if(c === ','){ row.push(field); field=''; }
+      else if(c === '\r'){ /* handled by \n */ }
+      else if(c === '\n'){ row.push(field); rows.push(row); row=[]; field=''; }
+      else field += c;
+    }
+  }
+  if(field.length || row.length){ row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length===1 && r[0].trim()===''));
+}
+const CSV_FIELD_ALIASES = {
+  name: ['name','rabbit name','rabbit'],
+  sex: ['sex','gender'],
+  breed: ['breed'],
+  color: ['color','colour','color variety','variety','color / variety'],
+  earNumber: ['ear #','ear#','ear number','ear tag','eartag'],
+  dob: ['dob','date of birth','birthdate','birth date'],
+  weight: ['weight','weight lbs','weight (lbs)'],
+  legsWins: ['legs wins','legs (wins)','legs','wins'],
+  registrationNumber: ['registration #','registration number','reg #','reg number','registration'],
+  sireName: ['sire','sire name','father'],
+  damName: ['dam','dam name','mother'],
+  status: ['status'],
+  notes: ['notes','note'],
+};
+function csvNormalizeHeader(s){ return s.toLowerCase().trim().replace(/[_\-]/g,' ').replace(/\s+/g,' '); }
+function mapCsvHeaders(headerRow){
+  const map = {};
+  headerRow.forEach((h,i)=>{
+    const norm = csvNormalizeHeader(h);
+    for(const [field,aliases] of Object.entries(CSV_FIELD_ALIASES)){
+      if(map[field]===undefined && aliases.includes(norm)) map[field]=i;
+    }
+  });
+  return map;
+}
+function csvNormalizeSex(s){
+  if(!s) return 'doe';
+  const v = s.trim().toLowerCase();
+  return ['buck','male','m','b'].includes(v) ? 'buck' : 'doe';
+}
+function csvParseDate(s){
+  if(!s) return null;
+  s = s.trim();
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){ return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
+  return null; // unrecognized format — left blank rather than guessed wrong
+}
+let csvImportRows = [];
+function openImportCsvSheet(){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Import from CSV</h2>
+    <div class="card-sub" style="margin-bottom:12px;">Upload a CSV with a header row. Columns like Name, Sex, Breed, Color, Ear #, DOB, Weight, Legs (wins), Sire, Dam, Notes are matched automatically — you don't need exact column names or a particular order. Only Name is required.</div>
+    <button class="btn btn-primary" style="width:100%;" id="csvPickBtn">Choose CSV file</button>
+    <div id="csvPreviewArea"></div>`);
+  document.getElementById('csvPickBtn').onclick = ()=>document.getElementById('csvFileInput').click();
+  document.getElementById('csvFileInput').onchange = (e)=>{
+    const file = e.target.files[0]; e.target.value='';
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{ handleCsvParsed(reader.result); }
+      catch(err){ console.error(err); showToast("Couldn't read that file — check it's a plain CSV export."); }
+    };
+    reader.readAsText(file);
+  };
+}
+function handleCsvParsed(text){
+  const rows = parseCSV(text);
+  const area = document.getElementById('csvPreviewArea');
+  if(rows.length < 2){ area.innerHTML = `<div class="empty">No data rows found in that file.</div>`; return; }
+  const headerMap = mapCsvHeaders(rows[0]);
+  if(headerMap.name===undefined){
+    area.innerHTML = `<div class="dupe-box">Couldn't find a "Name" column in the header row. Rename the column to "Name" and try again.</div>`;
+    return;
+  }
+  const dataRows = rows.slice(1).filter(r=>r.some(c=>c.trim()!==''));
+  csvImportRows = dataRows.map(cols=>{
+    const get = (field)=> headerMap[field]!==undefined ? (cols[headerMap[field]]||'').trim() : '';
+    const name = get('name');
+    const data = {
+      name, sex: csvNormalizeSex(get('sex')), breed: get('breed'), color: get('color'),
+      earNumber: get('earNumber'), dob: csvParseDate(get('dob')), weight: get('weight'),
+      legsWins: get('legsWins'), registrationNumber: get('registrationNumber'),
+      sireName: get('sireName'), damName: get('damName'), notes: get('notes'),
+    };
+    const statusRaw = get('status').trim().toLowerCase();
+    if(statusRaw) data.status = statusRaw;
+    else data.status = data.sex==='doe' ? 'open' : 'available';
+    const existing = name ? findByName(name) : null;
+    return { data, existing, action: existing ? 'skip' : 'new' };
+  }).filter(row=>row.data.name);
+  renderCsvPreview();
+}
+function renderCsvPreview(){
+  const area = document.getElementById('csvPreviewArea');
+  const total = csvImportRows.length;
+  const dupes = csvImportRows.filter(r=>r.existing);
+  const newCount = total - dupes.length;
+  area.innerHTML = `
+    <div class="section-label">${total} ROW${total===1?'':'S'} FOUND</div>
+    <div class="card-sub" style="margin-bottom:10px;">${newCount} new &middot; ${dupes.length} match${dupes.length===1?'es':''} an existing rabbit by name</div>
+    ${dupes.length ? `<div class="row2" style="margin-bottom:12px;">
+        <button class="btn btn-secondary btn-sm" id="csvSkipAll">Skip all matches</button>
+        <button class="btn btn-secondary btn-sm" id="csvUpdateAll">Update all matches</button>
+      </div>
+      <div class="section-label">REVIEW MATCHES</div>
+      ${dupes.map((row)=>{
+        const i = csvImportRows.indexOf(row);
+        return `<div class="card no-tap">
+          <div class="card-name" style="font-size:15px;">${esc(row.data.name)}</div>
+          <div class="card-sub">Matches existing rabbit &middot; ${esc(row.existing.status)}${row.existing.color?' &middot; '+esc(row.existing.color):''}</div>
+          <div class="seg" style="margin-top:8px;" data-csvrow="${i}">
+            <button data-v="skip" class="${row.action==='skip'?'on':''}">Skip</button>
+            <button data-v="update" class="${row.action==='update'?'on':''}">Update</button>
+            <button data-v="new" class="${row.action==='new'?'on':''}">Import as new</button>
+          </div>
+        </div>`;
+      }).join('')}` : ''}
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="csvImportBtn">Import</button></div>`;
+  document.querySelectorAll('[data-csvrow]').forEach(seg=>{
+    seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      csvImportRows[+seg.dataset.csvrow].action = b.dataset.v;
+      seg.querySelectorAll('button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+    });
+  });
+  const skipAll = document.getElementById('csvSkipAll');
+  if(skipAll) skipAll.onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='skip'; }); renderCsvPreview(); };
+  const updateAll = document.getElementById('csvUpdateAll');
+  if(updateAll) updateAll.onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='update'; }); renderCsvPreview(); };
+  document.getElementById('csvImportBtn').onclick = commitCsvImport;
+}
+function commitCsvImport(){
+  let imported=0, updated=0, skipped=0;
+  csvImportRows.forEach(row=>{
+    if(row.existing && row.action==='skip'){ skipped++; return; }
+    if(row.existing && row.action==='update'){
+      const ex = row.existing;
+      Object.keys(row.data).forEach(k=>{ if(row.data[k]) ex[k]=row.data[k]; });
+      updated++;
+    } else {
+      rabbits.push(blankRabbit(row.data));
+      imported++;
+    }
+    if(row.data.sireName) ensureAncestor(row.data.sireName,'buck');
+    if(row.data.damName) ensureAncestor(row.data.damName,'doe');
+  });
+  saveData(); closeSheet(); render();
+  const parts=[]; if(imported) parts.push(imported+' imported'); if(updated) parts.push(updated+' updated'); if(skipped) parts.push(skipped+' skipped');
+  showToast(parts.join(', ')||'Nothing to import');
+  csvImportRows = [];
 }
 
 loadData();
