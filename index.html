@@ -139,29 +139,55 @@
 
   #printPedigree{display:none;}
   #printPedigree.active{display:block;}
-  .pp-sheet{ background:#f6efe0; border:3px solid #0c1830; border-radius:22px; padding:22px 26px; font-family:'Public Sans',sans-serif; color:#0c1830; position:relative; }
-  .pp-sheet::before{ content:''; position:absolute; inset:7px; border:1px solid #c6a15b; border-radius:16px; pointer-events:none; }
-  .pp-header{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:18px; }
-  .pp-brand{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:38px; color:#142440; line-height:1; }
-  .pp-brand2{ font-family:'Jost',sans-serif; font-size:14px; letter-spacing:.25em; color:#b08535; margin-top:2px; }
-  .pp-rope{ width:130px; border-top:1px solid #b08535; margin:8px 0 6px; }
-  .pp-tag1{ font-family:'Jost',sans-serif; font-size:9px; letter-spacing:.2em; color:#142440; }
-  .pp-script{ font-family:'Pinyon Script',cursive; font-size:20px; color:#142440; margin-top:4px; }
-  .pp-meta{ font-size:11px; color:#142440; line-height:2.1; }
-  .pp-meta u{ text-decoration:none; border-bottom:1px solid #142440; padding-bottom:1px; }
-  .pp-grid{ display:grid; grid-template-columns:0.85fr 0.85fr 1fr 1.25fr; grid-template-rows:repeat(8,1fr); gap:8px; min-height:420px; position:relative; }
-  .pp-gen-label{ font-family:'Jost',sans-serif; font-size:10px; font-weight:600; letter-spacing:.1em; color:#142440; text-align:center; grid-row:1; margin-bottom:-6px; }
-  .pp-box{ border:1px solid #b08535; border-radius:5px; background:#fbf6ea; padding:5px 8px 7px; display:flex; flex-direction:column; justify-content:center; }
-  .pp-pill{ background:#142440; color:#e5cd97; font-family:'Jost',sans-serif; font-size:9px; letter-spacing:.06em; text-align:center; padding:3px 4px; border-radius:3px; margin:-5px -8px 5px; }
-  .pp-line{ font-size:9px; color:#0c1830; line-height:1.7; border-bottom:1px solid #cabb95; }
-  .pp-line-compact{ font-size:8px; color:#0c1830; line-height:1.5; }
-  .pp-footer{ display:flex; justify-content:space-between; align-items:flex-end; margin-top:16px; }
-  .pp-anchor{ width:34px; height:34px; border-radius:50% 50% 0 0; background:#142440; display:flex; align-items:center; justify-content:center; color:#c6a15b; font-size:18px; }
+  .pp-page{ background:#f6efe0; color:#0c1830; font-family:'Public Sans',sans-serif; position:relative; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; border:3px solid #0c1830; border-radius:18px; }
+  .pp-page::before{ content:''; position:absolute; inset:7px; border:1px solid #c6a15b; border-radius:13px; pointer-events:none; }
+  .pp-page.pp-landscape{ width:1027px; height:787px; padding:20px 26px 16px; }
+  .pp-page.pp-portrait{ width:787px; height:1027px; padding:20px 22px 16px; }
+  .pp-header{ display:flex; justify-content:space-between; align-items:flex-start; flex:0 0 auto; margin-bottom:10px; }
+  .pp-brand{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:32px; color:#142440; line-height:1; }
+  .pp-brand2{ font-family:'Jost',sans-serif; font-size:12px; letter-spacing:.25em; color:#b08535; margin-top:2px; }
+  .pp-rope{ width:110px; border-top:1px solid #b08535; margin:7px 0 5px; }
+  .pp-tag1{ font-family:'Jost',sans-serif; font-size:8px; letter-spacing:.2em; color:#142440; }
+  .pp-script{ font-family:'Pinyon Script',cursive; font-size:17px; color:#142440; margin-top:4px; }
+  .pp-meta-table{ display:grid; grid-template-columns:auto minmax(120px,auto); column-gap:10px; row-gap:7px; align-content:start; margin-top:2px; }
+  .pp-meta-label{ font-family:'Jost',sans-serif; font-size:10px; font-weight:700; letter-spacing:.03em; color:#142440; text-align:left; white-space:nowrap; align-self:end; padding-bottom:2px; }
+  .pp-meta-value{ font-size:11px; color:#142440; border-bottom:1px solid #142440; padding-bottom:2px; min-height:14px; }
+  .pp-simple-title{ text-align:right; }
+  .pp-simple-title .pp-simple-name{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:22px; color:#142440; }
+  .pp-simple-title .pp-simple-color{ font-family:'Jost',sans-serif; font-size:11px; color:#7a6a44; margin-top:2px; }
+  .pp-simple-title .pp-simple-dob{ font-family:'Jost',sans-serif; font-size:10px; color:#142440; margin-top:3px; }
+  .pp-gen-labels{ display:grid; flex:0 0 auto; margin-bottom:6px; }
+  .pp-gen-label{ font-family:'Jost',sans-serif; font-weight:600; letter-spacing:.1em; color:#142440; text-align:center; }
+  .pp-grid{ display:grid; gap:7px; flex:1 1 auto; min-height:0; }
+  .pp-box{ border:1px solid #b08535; border-radius:5px; background:#fbf6ea; padding:4px 7px 5px; display:flex; flex-direction:column; justify-content:flex-start; overflow:hidden; min-height:0; }
+  .pp-pill{ background:#142440; color:#e5cd97; font-family:'Jost',sans-serif; letter-spacing:.06em; text-align:center; padding:2px 4px; border-radius:3px; margin:-4px -7px 4px; flex:0 0 auto; }
+  .pp-line{ color:#0c1830; border-bottom:1px solid #cabb95; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pp-line-compact{ color:#0c1830; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pp-box-simple{ align-items:center; justify-content:center; text-align:center; }
+  .pp-simple-box-name{ font-family:'Cormorant Garamond',serif; font-weight:600; color:#142440; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  .pp-simple-box-color{ font-family:'Jost',sans-serif; color:#7a6a44; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%; }
+  .pp-footer{ display:flex; justify-content:space-between; align-items:flex-end; flex:0 0 auto; margin-top:10px; }
+  .pp-anchor{ width:28px; height:28px; border-radius:50% 50% 0 0; background:#142440; display:flex; align-items:center; justify-content:center; color:#c6a15b; font-size:15px; }
+  /* Full-detail sizing */
+  .pp-landscape.pp-full .pp-line{ font-size:9px; line-height:1.65; }
+  .pp-landscape.pp-full .pp-line-compact{ font-size:7.6px; line-height:1.45; }
+  .pp-landscape.pp-full .pp-pill{ font-size:8.5px; }
+  .pp-portrait.pp-full .pp-line{ font-size:7.6px; line-height:1.5; }
+  .pp-portrait.pp-full .pp-line-compact{ font-size:6.6px; line-height:1.3; }
+  .pp-portrait.pp-full .pp-pill{ font-size:7.4px; }
+  /* Simplified sizing */
+  .pp-full .pp-gen-label{ font-size:9.5px; }
+  .pp-simple .pp-gen-label{ font-size:10.5px; }
+  .pp-landscape.pp-simple .pp-simple-box-name{ font-size:13px; }
+  .pp-landscape.pp-simple .pp-simple-box-color{ font-size:10px; }
+  .pp-landscape.pp-simple .pp-pill{ font-size:8.5px; }
+  .pp-portrait.pp-simple .pp-simple-box-name{ font-size:11px; }
+  .pp-portrait.pp-simple .pp-simple-box-color{ font-size:8.8px; }
+  .pp-portrait.pp-simple .pp-pill{ font-size:7.6px; }
   @media print{
     body *{visibility:hidden;}
     #printPedigree, #printPedigree *{visibility:visible;}
-    #printPedigree{position:absolute; top:0; left:0; width:100%; padding:10px;}
-    @page{ size:landscape; margin:8mm; }
+    #printPedigree{position:absolute; top:0; left:0;}
   }
 
   /* Rabbits sub-nav + profile screen + photos + notes + calendar */
@@ -203,6 +229,7 @@
   .cal-row-text{ font-size:13.5px; color:var(--ink); line-height:1.4; }
   .cal-row-text b{color:var(--navy);}
 </style>
+<style id="pp-page-size">@page{ size: landscape; margin: 0.15in; }</style>
 </head>
 <body>
 
@@ -528,7 +555,7 @@ function relateBoxHTML(rel){
 const ICONS = {
   home:'<path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1v-9"/>',
   rabbits:'<path d="M9 11C7 8 6.3 3.5 7.3 1C8.6 2 9.8 6 10.3 10.5"/><path d="M15 11C17 8 17.7 3.5 16.7 1C15.4 2 14.2 6 13.7 10.5"/><path d="M7 13a5 5 0 0 1 10 0c0 4-2.2 7-5 7s-5-3-5-7z"/>',
-  litters:'<circle cx="7" cy="19" r="1.8"/><circle cx="16" cy="19" r="1.5"/><path d="M4 9c0-3.5 2.5-6 6-6s6.5 2 7 6"/><path d="M6 9h12l-1 8H7z"/><path d="M18 4l2-1.5"/>',
+  litters:'<circle cx="6.5" cy="19" r="1.8"/><circle cx="16.5" cy="19" r="1.8"/><path d="M6.5 17 C4 12 5 6 11 6 C14.5 6 14.5 8 14.5 10 L14.5 17"/><path d="M14.5 10.5 L19.5 6"/><path d="M6.5 17 L14.5 17"/>',
   calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4M10 16h4"/>',
   does:'<circle cx="12" cy="9" r="5"/><path d="M12 14v7M9 18h6"/>',
   bucks:'<circle cx="10" cy="14" r="5"/><path d="M14 10l6-6M15 4h5v5"/>',
@@ -537,7 +564,7 @@ const ICONS = {
   forsale:'<text x="12" y="17" text-anchor="middle" font-size="15" font-weight="700" font-family="sans-serif" stroke="none">$</text>',
   more:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>'
 };
-const NAV = [['home','Home'],['rabbits','Rabbits'],['litters','Litters'],['calendar','Calendar'],['more','More']];
+const NAV = [['home','Home'],['rabbits','Herd'],['litters','Nursery'],['calendar','Calendar'],['more','More']];
 
 function renderNav(){
   const activeMap = {does:'rabbits', bucks:'rabbits', juniors:'rabbits', ancestors:'more', archive:'more', backup:'more', merge:'more', search:'more', planned:'more', forsale:'more'};
@@ -810,6 +837,8 @@ function renderHome(main){
     <div class="stat" data-goprog="juniors"><div class="n">${juniorsCount}</div><div class="l">Juniors</div></div>
   </div>`;
 
+  h += `<button class="btn btn-secondary" style="width:100%; margin-bottom:16px;" id="homeAddRabbitBtn">+ Add a rabbit</button>`;
+
   h += `<div class="section-label">LITTERS AND UPCOMING</div>
   <div class="card no-tap">
     <div class="card-detail">${nursingDoes.length} active litter${nursingDoes.length===1?'':'s'} &middot; ${liveKits} live kit${liveKits===1?'':'s'} (${liveBucks} buck${liveBucks===1?'':'s'}, ${liveDoes} doe${liveDoes===1?'':'s'})</div>
@@ -829,6 +858,7 @@ function renderHome(main){
   </div>`;
 
   main.innerHTML = h;
+  document.getElementById('homeAddRabbitBtn').onclick = openAddSheet;
   document.querySelectorAll('[data-nestdone]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.nestdone); if(r){ r.nestBoxAckDate=todayStr(); saveData(); render(); } });
   document.querySelectorAll('[data-convertyes]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertyes); if(r) convertLitterToIndividuals(r.id); });
   document.querySelectorAll('[data-convertno]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertno); if(r){ r.litterConvertAckDate=todayStr(); saveData(); render(); } });
@@ -1607,7 +1637,7 @@ function openPedigreeSheet(r){
       <button class="btn btn-primary" id="f-official-pdf" style="flex:1 1 100%;">Download Official Pedigree PDF</button>
     </div>`);
   wirePedigreeTaps(document.getElementById('sheet'), r, back);
-  document.getElementById('f-print').onclick=()=>printPedigree(r);
+  document.getElementById('f-print').onclick=()=>openPrintOptionsSheet(r);
   document.getElementById('f-official-pdf').onclick=()=>downloadOfficialPedigreePDF(r);
 }
 function openQuickNameSheet(parent, rel, back){
@@ -1668,84 +1698,106 @@ function openQuickNameSheet(parent, rel, back){
   };
 }
 
-function printBoxMain(n,label,rowStart,rowSpan,id){
-  n=n||{};
-  return `<div class="pp-box" id="${id}" style="grid-row:${rowStart} / span ${rowSpan};">
-    <div class="pp-pill">${label}</div>
-    <div class="pp-line"><b>Name:</b> ${esc(n.name||'')}</div>
-    <div class="pp-line"><b>Ear #:</b> ${esc(n.earNumber||'')}</div>
-    <div class="pp-line"><b>Color:</b> ${esc(n.color||'')}</div>
-    <div class="pp-line"><b>Birthdate:</b> ${n.dob?fmtDate(n.dob):''}</div>
-    <div class="pp-line"><b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
-    <div class="pp-line"><b>Breed:</b> ${esc(n.breed||'')}</div>
-    <div class="pp-line"><b>Sex:</b> ${n.sex==='doe'?'Doe':n.sex==='buck'?'Buck':''}</div></div>`;
-}
-function printBoxFull(n,label,rowStart,rowSpan,id){
-  n=n||{};
-  return `<div class="pp-box" id="${id}" style="grid-row:${rowStart} / span ${rowSpan};">
-    <div class="pp-pill">${label}</div>
-    <div class="pp-line"><b>Name:</b> ${esc(n.name||'')}</div>
+function ppBoxFieldsFull(n){
+  return `<div class="pp-line"><b>Name:</b> ${esc(n.name||'')}</div>
     <div class="pp-line"><b>Ear #:</b> ${esc(n.earNumber||'')}</div>
     <div class="pp-line"><b>Color:</b> ${esc(n.color||'')}</div>
     <div class="pp-line"><b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
-    <div class="pp-line"><b>Legs (wins):</b> ${esc(n.legsWins||'')}</div></div>`;
+    <div class="pp-line"><b>Legs (wins):</b> ${esc(n.legsWins||'')}</div>`;
 }
-function printBoxCompact(n,label,rowStart,id){
-  n=n||{};
-  return `<div class="pp-box" id="${id}" style="grid-row:${rowStart} / span 1; padding:3px 6px 4px;">
-    <div class="pp-pill" style="margin:-3px -6px 3px;">${label}</div>
-    <div class="pp-line-compact"><b>Name:</b> ${esc(n.name||'')} &nbsp; <b>Ear #:</b> ${esc(n.earNumber||'')}</div>
+function ppBoxFieldsCompact(n){
+  return `<div class="pp-line-compact"><b>Name:</b> ${esc(n.name||'')} &nbsp; <b>Ear #:</b> ${esc(n.earNumber||'')}</div>
     <div class="pp-line-compact"><b>Color:</b> ${esc(n.color||'')} &nbsp; <b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
-    <div class="pp-line-compact"><b>Legs (wins):</b> ${esc(n.legsWins||'')}</div></div>`;
+    <div class="pp-line-compact"><b>Legs (wins):</b> ${esc(n.legsWins||'')}</div>`;
 }
-function drawPedigreeConnectors(){
-  const wrap=document.getElementById('pp-grid-wrap'), svg=document.getElementById('pp-lines');
-  if(!wrap||!svg) return;
-  const cr=wrap.getBoundingClientRect();
-  svg.setAttribute('width',cr.width); svg.setAttribute('height',cr.height); svg.setAttribute('viewBox',`0 0 ${cr.width} ${cr.height}`);
-  const rc=id=>{ const el=document.getElementById(id); if(!el) return null; const r=el.getBoundingClientRect();
-    return {right:r.right-cr.left, left:r.left-cr.left, midY:r.top-cr.top+r.height/2}; };
-  const bracket=(c,p1,p2)=>{ const a=rc(c),b=rc(p1),d=rc(p2); if(!a||!b||!d) return '';
-    const mx=(a.right+b.left)/2;
-    return `<path d="M${a.right},${a.midY} L${mx},${a.midY} M${mx},${b.midY} L${mx},${d.midY} M${mx},${b.midY} L${b.left},${b.midY} M${mx},${d.midY} L${d.left},${d.midY}" stroke="#142440" stroke-width="1" fill="none"/>`; };
-  svg.innerHTML=[bracket('pp-self','pp-sire','pp-dam'),bracket('pp-sire','pp-ss','pp-sd'),bracket('pp-dam','pp-ds','pp-dd'),
-    bracket('pp-ss','pp-sss','pp-ssd'),bracket('pp-sd','pp-sds','pp-sdd'),bracket('pp-ds','pp-dss','pp-dsd'),bracket('pp-dd','pp-dds','pp-ddd')].join('');
+function ppBoxFieldsSimple(n){
+  return `<div class="pp-simple-box-name">${esc(n.name||'')}</div>
+    <div class="pp-simple-box-color">${esc(n.color||'')}</div>`;
 }
-function printPedigree(r){
-  const g=p=>ancestorByPath(r.name,p);
-  document.getElementById('printPedigree').innerHTML=`
-    <div class="pp-sheet">
+function ppBoxMarkup(n, label, detail, compact){
+  n = n||{};
+  const inner = detail==='simple' ? ppBoxFieldsSimple(n) : (compact ? ppBoxFieldsCompact(n) : ppBoxFieldsFull(n));
+  return `<div class="pp-box ${detail==='simple'?'pp-box-simple':''}">
+    <div class="pp-pill">${esc(label)}</div>${inner}</div>`;
+}
+function ppBox(n, label, gridColumn, rowStart, rowSpan, detail, compact){
+  return `<div style="grid-column:${gridColumn}; grid-row:${rowStart} / span ${rowSpan};">${ppBoxMarkup(n,label,detail,compact)}</div>`;
+}
+function ppSelfBox(r, detail){
+  // Unlike the ancestor boxes, the subject rabbit has no sibling to
+  // share its column with — sizing it to fill the full 8-row span
+  // like the others left a tall, mostly-empty block. Instead it's
+  // sized to its content (same as a grandparent-tier box) and
+  // centered vertically in the column.
+  return `<div style="grid-column:1; grid-row:1 / span 8; display:flex; flex-direction:column; justify-content:center;">${ppBoxMarkup(r,'Rabbit',detail,false)}</div>`;
+}
+function pedigreePrintHTML(r, orientation, detail){
+  const g = p => ancestorByPath(r.name, p);
+  const cols = '0.85fr 0.9fr 1fr 1.3fr';
+  const genLabels = `<div class="pp-gen-labels" style="grid-template-columns:${cols};">
+    <div class="pp-gen-label">GENERATION 1</div><div class="pp-gen-label">GENERATION 2</div>
+    <div class="pp-gen-label">GENERATION 3</div><div class="pp-gen-label">GENERATION 4</div></div>`;
+  const boxes = [
+    ppSelfBox(r, detail),
+    ppBox(g('s'), 'Sire (father)', 2, 1, 4, detail, false),
+    ppBox(g('d'), 'Dam (mother)', 2, 5, 4, detail, false),
+    ppBox(g('ss'), 'Paternal grandsire', 3, 1, 2, detail, false),
+    ppBox(g('sd'), 'Paternal granddam', 3, 3, 2, detail, false),
+    ppBox(g('ds'), 'Maternal grandsire', 3, 5, 2, detail, false),
+    ppBox(g('dd'), 'Maternal granddam', 3, 7, 2, detail, false),
+    ppBox(g('sss'), 'GG sire 1', 4, 1, 1, detail, true),
+    ppBox(g('ssd'), 'GG dam 1', 4, 2, 1, detail, true),
+    ppBox(g('sds'), 'GG sire 2', 4, 3, 1, detail, true),
+    ppBox(g('sdd'), 'GG dam 2', 4, 4, 1, detail, true),
+    ppBox(g('dss'), 'GG sire 3', 4, 5, 1, detail, true),
+    ppBox(g('dsd'), 'GG dam 3', 4, 6, 1, detail, true),
+    ppBox(g('dds'), 'GG sire 4', 4, 7, 1, detail, true),
+    ppBox(g('ddd'), 'GG dam 4', 4, 8, 1, detail, true),
+  ].join('');
+  const headerRight = detail==='simple'
+    ? `<div class="pp-simple-title"><div class="pp-simple-name">Ear # ${esc(r.earNumber||'—')}</div><div class="pp-simple-dob">${r.dob?'Born '+fmtDate(r.dob):''}</div></div>`
+    : `<div class="pp-meta-table">
+        <div class="pp-meta-label">BREED</div><div class="pp-meta-value">${esc(r.breed||'')}</div>
+        <div class="pp-meta-label">DATE OF BIRTH</div><div class="pp-meta-value">${r.dob?fmtDate(r.dob):''}</div>
+        <div class="pp-meta-label">SEX</div><div class="pp-meta-value">${r.sex==='doe'?'Doe':r.sex==='buck'?'Buck':''}</div>
+      </div>`;
+  return `<div class="pp-page pp-${orientation} pp-${detail}">
       <div class="pp-header">
         <div><div class="pp-brand">CJM</div><div class="pp-brand2">LEGACY RABBITRY</div><div class="pp-rope"></div>
-          <div class="pp-tag1">QUALITY &middot; TYPE &middot; PURPOSE</div>
-          <div class="pp-script">Building a legacy, one generation at a time</div></div>
-        <div class="pp-meta">
-          <div><b>BREED:</b> <u>&nbsp;${esc(r.breed||'')}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></div>
-          <div><b>DATE OF BIRTH:</b> <u>&nbsp;${r.dob?fmtDate(r.dob):''}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></div>
-          <div><b>SEX:</b> <u>&nbsp;${r.sex==='doe'?'Doe':'Buck'}&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</u></div>
-        </div>
+          <div class="pp-tag1">QUALITY &middot; TYPE &middot; PURPOSE</div></div>
+        ${headerRight}
       </div>
-      <div class="pp-grid" id="pp-grid-wrap">
-        <svg id="pp-lines" style="position:absolute; top:0; left:0; pointer-events:none;"></svg>
-        <div class="pp-gen-label" style="grid-column:1;">GENERATION 1</div>
-        <div class="pp-gen-label" style="grid-column:2;">GENERATION 2</div>
-        <div class="pp-gen-label" style="grid-column:3;">GENERATION 3</div>
-        <div class="pp-gen-label" style="grid-column:4;">GENERATION 4</div>
-        <div style="grid-column:1; grid-row:1/span 8; display:grid; grid-template-rows:subgrid;">${printBoxMain(r,'CJM Rabbitry — pedigree',1,8,'pp-self')}</div>
-        <div style="grid-column:2; grid-row:1/span 8; display:grid; grid-template-rows:subgrid;">${printBoxFull(g('s'),'Sire (father)',1,4,'pp-sire')}${printBoxFull(g('d'),'Dam (mother)',5,4,'pp-dam')}</div>
-        <div style="grid-column:3; grid-row:1/span 8; display:grid; grid-template-rows:subgrid;">${printBoxFull(g('ss'),'Paternal grandsire',1,2,'pp-ss')}${printBoxFull(g('sd'),'Paternal granddam',3,2,'pp-sd')}${printBoxFull(g('ds'),'Maternal grandsire',5,2,'pp-ds')}${printBoxFull(g('dd'),'Maternal granddam',7,2,'pp-dd')}</div>
-        <div style="grid-column:4; grid-row:1/span 8; display:grid; grid-template-rows:subgrid;">${printBoxCompact(g('sss'),'GG sire 1',1,'pp-sss')}${printBoxCompact(g('ssd'),'GG dam 1',2,'pp-ssd')}${printBoxCompact(g('sds'),'GG sire 2',3,'pp-sds')}${printBoxCompact(g('sdd'),'GG dam 2',4,'pp-sdd')}${printBoxCompact(g('dss'),'GG sire 3',5,'pp-dss')}${printBoxCompact(g('dsd'),'GG dam 3',6,'pp-dsd')}${printBoxCompact(g('dds'),'GG sire 4',7,'pp-dds')}${printBoxCompact(g('ddd'),'GG dam 4',8,'pp-ddd')}</div>
-      </div>
+      ${genLabels}
+      <div class="pp-grid" style="grid-template-columns:${cols}; grid-template-rows:repeat(8,1fr);">${boxes}</div>
       <div class="pp-footer">
-        <div><div class="pp-script" style="font-size:15px; line-height:1.4;">Preserving genetics.<br>Promoting excellence.<br>Producing quality.</div>
-          <div style="font-family:'Jost',sans-serif; font-size:10px; color:#142440; margin-top:6px;">www.CJMRabbitry.com</div></div>
-        <div class="pp-anchor">&#9875;</div><div style="width:110px;"></div>
+        <div style="font-family:'Jost',sans-serif; font-size:9px; color:#142440;">www.CJMRabbitry.com</div>
+
+        <div class="pp-anchor">&#9875;</div>
       </div>
     </div>`;
+}
+function printPedigreeAdvanced(r, orientation, detail){
+  const sizeStr = orientation==='landscape' ? '11in 8.5in' : '8.5in 11in';
+  document.getElementById('pp-page-size').textContent = `@page{ size: ${sizeStr}; margin: 0.15in; }`;
+  document.getElementById('printPedigree').innerHTML = pedigreePrintHTML(r, orientation, detail);
   document.getElementById('printPedigree').classList.add('active');
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ drawPedigreeConnectors(); setTimeout(()=>window.print(),90); }));
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{ setTimeout(()=>window.print(),60); }));
 }
 window.addEventListener('afterprint',()=>document.getElementById('printPedigree').classList.remove('active'));
+function openPrintOptionsSheet(r){
+  let orientation='landscape', detail='full';
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>${esc(r.name)} — Print / Save PDF</h2>
+    <div class="field"><label>Orientation</label><div class="seg" id="f-orient">
+      <button data-v="landscape" class="on">Sideways (landscape)</button><button data-v="portrait">Long ways (portrait)</button></div></div>
+    <div class="field"><label>Detail level</label><div class="seg" id="f-detail">
+      <button data-v="full" class="on">Full pedigree</button><button data-v="simple">Simplified — name &amp; color only</button></div></div>
+    <div class="card-sub" style="margin-bottom:6px;">Always fits on a single page. In the print dialog, choose "Save as PDF" to download instead of printing.</div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-go">Generate</button></div>`);
+  document.querySelectorAll('#f-orient button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-orient button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); orientation=b.dataset.v; });
+  document.querySelectorAll('#f-detail button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-detail button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); detail=b.dataset.v; });
+  document.getElementById('f-go').onclick=()=>{ closeSheet(); printPedigreeAdvanced(r, orientation, detail); };
+}
 
 /* ============================================================
    OFFICIAL PEDIGREE PDF EXPORT (fillable template, imaging locked)
@@ -1791,6 +1843,16 @@ function fillAncestorBoxValues(prefix, anc, put){
   put(`${prefix}_COLOR`, anc.color);
   put(`${prefix}_LEGS`, anc.legsWins);
 }
+function sanitizeForPdf(str){
+  if(str===undefined || str===null) return '';
+  // The template's font can only render standard Latin/Western
+  // characters. Emoji and other special characters used as
+  // placeholder buck/doe names (e.g. temp IDs like a raised
+  // hand icon) can't be rendered and will crash the PDF export
+  // entirely if left in, so they're stripped out here rather
+  // than left to fail at save time.
+  return String(str).replace(/[^\x00-\xFF]/g, '').replace(/\s+/g, ' ').trim();
+}
 function buildOfficialPedigreeValues(r){
   const g = p => ancestorByPath(r.name, p);
   const v = {};
@@ -1798,7 +1860,15 @@ function buildOfficialPedigreeValues(r){
   // stray leftover value already baked into the template PDF (e.g.
   // a stray space character) always gets overwritten, not just skipped.
   Object.keys(PEDIGREE_FIELD_MAP).forEach(role => { v[role] = ''; });
-  const put = (role, val) => { v[role] = (val === undefined || val === null) ? '' : String(val).trim(); };
+  const put = (role, val) => {
+    const clean = sanitizeForPdf(val);
+    // If sanitizing wiped out a NAME field entirely (e.g. the recorded
+    // name was just an emoji placeholder), show a visible marker
+    // instead of a blank box — a blank box would look like no sire/dam
+    // is on file at all, which would be misleading.
+    if(!clean && val && String(val).trim() && role.endsWith('_NAME')) v[role] = '(name unavailable)';
+    else v[role] = clean;
+  };
   put('BREED', r.breed);
   put('DATE_OF_BIRTH', r.dob ? fmtDate(r.dob) : '');
   put('SEX', r.sex==='doe' ? 'Doe' : r.sex==='buck' ? 'Buck' : '');
@@ -2143,7 +2213,7 @@ function wireProfileTab(r){
   });
   if(profileTab==='pedigree'){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
-    const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>printPedigree(r);
+    const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>openPrintOptionsSheet(r);
     const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
   }
   if(profileTab==='litters'){ attachCardEvents(); }
