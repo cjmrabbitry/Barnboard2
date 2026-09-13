@@ -1822,7 +1822,7 @@ function buildOfficialPedigreeValues(r){
 async function downloadOfficialPedigreePDF(r){
   try{
     const { PDFDocument, StandardFonts } = PDFLib;
-    const existingBytes = await fetch('assets/pedigree-template.pdf').then(res=>{
+    const existingBytes = await fetch('pedigree-template.pdf').then(res=>{
       if(!res.ok) throw new Error('Template PDF not found: '+res.status);
       return res.arrayBuffer();
     });
