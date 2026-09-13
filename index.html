@@ -119,6 +119,11 @@
   .sheet-actions .btn{flex:1;}
   .close-x{ position:absolute; top:6px; right:6px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; background:none; border:none; font-size:22px; color:var(--ink); opacity:.5; cursor:pointer; line-height:1; }
   .toast{ position:fixed; bottom:100px; left:50%; transform:translateX(-50%); background:var(--navy); color:var(--page); padding:10px 18px; border-radius:20px; font-size:13px; z-index:50; opacity:0; transition:opacity .25s; pointer-events:none; max-width:88%; text-align:center; font-family:'Jost',sans-serif; }
+  .save-error-banner{ display:none; position:fixed; top:0; left:0; right:0; z-index:70; background:var(--rust); color:#fff; padding:12px 16px; font-family:'Public Sans',sans-serif; font-size:13.5px; line-height:1.4; box-shadow:0 2px 10px rgba(0,0,0,.25); }
+  .save-error-banner.on{ display:flex; align-items:flex-start; gap:10px; }
+  .save-error-banner .seb-text{ flex:1; }
+  .save-error-banner .seb-text b{ display:block; margin-bottom:2px; }
+  .save-error-banner button{ flex:0 0 auto; background:rgba(255,255,255,.18); border:none; color:#fff; border-radius:6px; padding:6px 10px; font-family:'Jost',sans-serif; font-weight:600; font-size:12px; cursor:pointer; }
   [data-theme="dark"] .toast{background:var(--gold-deep); color:#0c1830;}
   .toast.on{opacity:1;}
 
@@ -333,6 +338,7 @@
 
 <div class="sheet-backdrop" id="sheetBackdrop"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
+<div class="save-error-banner" id="saveErrorBanner"></div>
 <div id="printPedigree"></div>
 <div class="profile-view" id="profileView"></div>
 <div class="photo-viewer" id="photoViewer"></div>
@@ -544,7 +550,26 @@ async function loadData(){
   try{ const t=(await window.storage.get(THEME_KEY,false)).value; if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); }catch(e){}
   render();
 }
-async function saveData(){ try{ await window.storage.set(RABBITS_KEY, JSON.stringify(rabbits), false); }catch(e){ console.error(e); showToast("Couldn't save — device storage may be full. Try removing some photos."); } }
+async function saveData(){
+  try{
+    await window.storage.set(RABBITS_KEY, JSON.stringify(rabbits), false);
+    hideSaveError();
+    return true;
+  }catch(e){
+    console.error(e);
+    showSaveError("Your last change didn't save — your browser's local storage is full. Nothing new will save until you free up space (removing a few photos usually helps most). Storage usage is shown on the Backup and restore screen.");
+    return false;
+  }
+}
+function showSaveError(message){
+  const el = document.getElementById('saveErrorBanner');
+  el.innerHTML = `<div class="seb-text"><b>Not saved</b>${esc(message)}</div><button id="sebDismiss">Dismiss</button>`;
+  el.classList.add('on');
+  document.getElementById('sebDismiss').onclick = hideSaveError;
+}
+function hideSaveError(){
+  document.getElementById('saveErrorBanner').classList.remove('on');
+}
 async function savePlanned(){ try{ await window.storage.set(PLANNED_KEY, JSON.stringify(planned), false); }catch(e){ console.error(e); } }
 async function saveEvents(){ try{ await window.storage.set(EVENTS_KEY, JSON.stringify(customEvents), false); }catch(e){ console.error(e); } }
 function showToast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2000); }
@@ -2154,7 +2179,21 @@ function renderForSale(main){
 }
 function renderBackup(main){
   const snap=JSON.stringify({rabbits,planned,customEvents,savedAt:new Date().toISOString()},null,2);
+  const usedBytes = new Blob([JSON.stringify(rabbits)]).size;
+  const usedMB = (usedBytes/1024/1024);
+  const REFERENCE_MB = 5; // conservative — some browsers allow more, several cap near here
+  const pct = Math.min(100, Math.round((usedMB/REFERENCE_MB)*100));
+  const warn = pct>=75;
+  const topPhotoRabbits = rabbits
+    .map(r=>({name:r.name, bytes:new Blob([JSON.stringify(r.photos||[])]).size}))
+    .filter(r=>r.bytes>2048).sort((a,b)=>b.bytes-a.bytes).slice(0,5);
   main.innerHTML=`
+    <div class="section-label">STORAGE USAGE</div>
+    <div class="card no-tap">
+      <div class="card-detail">Using about <b>${usedMB.toFixed(2)} MB</b> of the roughly ${REFERENCE_MB} MB most browsers allow this app. ${warn?'<b style="color:var(--rust);">Getting close to the limit</b> — new changes may stop saving. Photos are almost always the biggest factor; removing a few from the largest rabbits below frees up the most space.':'Plenty of room left.'}</div>
+      <div style="height:8px; border-radius:4px; background:var(--line); margin-top:10px; overflow:hidden;"><div style="height:100%; width:${pct}%; background:${warn?'var(--rust)':'var(--marsh)'};"></div></div>
+      ${topPhotoRabbits.length?`<div class="card-detail" style="margin-top:10px;"><b>Biggest photo storage:</b><br>${topPhotoRabbits.map(r=>`${esc(r.name)} — ${(r.bytes/1024/1024).toFixed(2)} MB`).join('<br>')}</div>`:''}
+    </div>
     <div class="section-label">SAVE A SNAPSHOT</div>
     <div class="card no-tap"><div class="card-detail">Copy this and paste it somewhere safe — Notes, or an email to yourself. It's a complete copy of every rabbit, litter, photo, and plan, independent of this file.</div>
       <textarea id="bk-out" readonly style="width:100%; height:130px; margin-top:10px; font-family:'JetBrains Mono',monospace; font-size:10px; padding:8px; border-radius:8px; border:1px solid var(--line-strong); background:var(--card); color:var(--ink);">${esc(snap)}</textarea>
@@ -2733,7 +2772,7 @@ function renderCsvPreview(){
   if(updateAll) updateAll.onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='update'; }); renderCsvPreview(); };
   document.getElementById('csvImportBtn').onclick = commitCsvImport;
 }
-function commitCsvImport(){
+async function commitCsvImport(){
   let imported=0, updated=0, skipped=0;
   csvImportRows.forEach(row=>{
     if(row.existing && row.action==='skip'){ skipped++; return; }
@@ -2748,9 +2787,14 @@ function commitCsvImport(){
     if(row.data.sireName) ensureAncestor(row.data.sireName,'buck');
     if(row.data.damName) ensureAncestor(row.data.damName,'doe');
   });
-  saveData(); closeSheet(); render();
-  const parts=[]; if(imported) parts.push(imported+' imported'); if(updated) parts.push(updated+' updated'); if(skipped) parts.push(skipped+' skipped');
-  showToast(parts.join(', ')||'Nothing to import');
+  const saved = await saveData();
+  closeSheet(); render();
+  if(saved){
+    const parts=[]; if(imported) parts.push(imported+' imported'); if(updated) parts.push(updated+' updated'); if(skipped) parts.push(skipped+' skipped');
+    showToast(parts.join(', ')||'Nothing to import');
+  } else {
+    showSaveError(`The import ran, but ${imported+updated} record${imported+updated===1?'':'s'} couldn't be saved — your browser's local storage is full. Free up space (removing a few photos usually helps most) and try the import again.`);
+  }
   csvImportRows = [];
 }
 
