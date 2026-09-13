@@ -6,6 +6,7 @@
 <title>CJM Legacy Rabbitry — Barn Board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Public+Sans:wght@400;500;600&family=Jost:wght@500;600&family=JetBrains+Mono:wght@500&family=Pinyon+Script&display=swap" rel="stylesheet">
+<script src="assets/pdf-lib.min.js"></script>
 <style>
   :root{
     --navy:#142440; --navy-deep:#0c1830;
@@ -1600,9 +1601,14 @@ function openPedigreeSheet(r){
     <div class="card-sub" style="margin-bottom:12px;">${subLine(r)}${r.dob?' &middot; b. '+fmtDate(r.dob):''}</div>
     ${pedigreeTreeHTML(r)}
     <div class="card-sub">Tap a name to edit it, or "+ Add name" to fill a blank spot.</div>
-    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Close</button><button class="btn btn-primary" id="f-print">Print / Save PDF</button></div>`);
+    <div class="sheet-actions" style="flex-wrap:wrap;">
+      <button class="btn btn-secondary" onclick="closeSheet()">Close</button>
+      <button class="btn btn-primary" id="f-print">Print / Save PDF</button>
+      <button class="btn btn-primary" id="f-official-pdf" style="flex:1 1 100%;">Download Official Pedigree PDF</button>
+    </div>`);
   wirePedigreeTaps(document.getElementById('sheet'), r, back);
   document.getElementById('f-print').onclick=()=>printPedigree(r);
+  document.getElementById('f-official-pdf').onclick=()=>downloadOfficialPedigreePDF(r);
 }
 function openQuickNameSheet(parent, rel, back){
   const label = rel==='s'?'Sire':'Dam';
@@ -1740,6 +1746,128 @@ function printPedigree(r){
   requestAnimationFrame(()=>requestAnimationFrame(()=>{ drawPedigreeConnectors(); setTimeout(()=>window.print(),90); }));
 }
 window.addEventListener('afterprint',()=>document.getElementById('printPedigree').classList.remove('active'));
+
+/* ============================================================
+   OFFICIAL PEDIGREE PDF EXPORT (fillable template, imaging locked)
+   ============================================================ */
+const PEDIGREE_FIELD_MAP = {
+  BREED: 'f1_580_601', DATE_OF_BIRTH: 'f2_589_610', SEX: 'f3_571_592',
+  G1_NAME: 'f32_598_619', G1_EAR: 'f37_91_91', G1_WEIGHT: 'f41_202_223',
+  G1_COLOR: 'f42_226_247', G1_LEGS: 'f50_567_588',
+  SIRE_NAME: 'f18_453_474', SIRE_EAR: 'f20_131_138', SIRE_WEIGHT: 'f21_536_543',
+  SIRE_COLOR: 'f28_142_156', SIRE_LEGS: 'f31_336_357',
+  DAM_NAME: 'f49_482_496', DAM_EAR: 'f53_102_109', DAM_WEIGHT: 'f57_372_393',
+  DAM_COLOR: 'f61_46_46', DAM_LEGS: 'f63_462_483',
+  PGS_NAME: 'f8_133_147', PGS_EAR: 'f10_93_100', PGS_WEIGHT: 'f11_327_348',
+  PGS_COLOR: 'f12_55_55', PGS_LEGS: 'f15_129_136',
+  PGD_NAME: 'f24_64_64', PGD_EAR: 'f27_527_534', PGD_WEIGHT: 'f30_19_19',
+  PGD_COLOR: 'f33_255_276', PGD_LEGS: 'f36_464_485',
+  MGS_NAME: 'f45_273_294', MGS_EAR: 'f48_435_456', MGS_WEIGHT: 'f52_408_429',
+  MGS_COLOR: 'f54_291_312', MGS_LEGS: 'f58_198_205',
+  MGD_NAME: 'f64_399_420', MGD_EAR: 'f67_558_579', MGD_WEIGHT: 'f71_300_321',
+  MGD_COLOR: 'f72_244_265', MGD_LEGS: 'f73_569_590',
+  GGSIRE1_NAME: 'f5_111_118', GGSIRE1_EAR: 'f4_363_384', GGSIRE1_WEIGHT: 'f7_82_82',
+  GGSIRE1_COLOR: 'f6_538_552', GGSIRE1_LEGS: 'f9_518_532',
+  GGDAM1_NAME: 'f14_10_10', GGDAM1_EAR: 'f13_417_438', GGDAM1_WEIGHT: 'f17_37_37',
+  GGDAM1_COLOR: 'f16_160_174', GGDAM1_LEGS: 'f19_253_274',
+  GGSIRE2_NAME: 'f23_187_194', GGSIRE2_EAR: 'f22_473_487', GGSIRE2_WEIGHT: 'f26_282_303',
+  GGSIRE2_COLOR: 'f25_381_402', GGSIRE2_LEGS: 'f29_196_203',
+  GGDAM2_NAME: 'f35_318_339', GGDAM2_EAR: 'f34_444_465', GGDAM2_WEIGHT: 'f38_120_127',
+  GGDAM2_COLOR: 'f39_426_447', GGDAM2_LEGS: 'f40_178_192',
+  GGSIRE3_NAME: 'f44_547_561', GGSIRE3_EAR: 'f43_169_183', GGSIRE3_WEIGHT: 'f47_217_238',
+  GGSIRE3_COLOR: 'f46_151_165', GGSIRE3_LEGS: 'f51_200_214',
+  GGDAM3_NAME: 'f56_28_28', GGDAM3_EAR: 'f55_235_256', GGDAM3_WEIGHT: 'f60_500_514',
+  GGDAM3_COLOR: 'f59_309_330', GGDAM3_LEGS: 'f62_204_225',
+  GGSIRE4_NAME: 'f66_73_73', GGSIRE4_EAR: 'f65_345_366', GGSIRE4_WEIGHT: 'f69_509_523',
+  GGSIRE4_COLOR: 'f68_208_229', GGSIRE4_LEGS: 'f70_556_570',
+  GGDAM4_NAME: 'f75_354_375', GGDAM4_EAR: 'f74_264_285', GGDAM4_WEIGHT: 'f76_390_411',
+  GGDAM4_COLOR: 'f77_491_505', GGDAM4_LEGS: 'f78_206_227',
+};
+function fillAncestorBoxValues(prefix, anc, put){
+  if(!anc) return;
+  put(`${prefix}_NAME`, anc.name);
+  put(`${prefix}_EAR`, anc.earNumber);
+  put(`${prefix}_WEIGHT`, anc.weight);
+  put(`${prefix}_COLOR`, anc.color);
+  put(`${prefix}_LEGS`, anc.legsWins);
+}
+function buildOfficialPedigreeValues(r){
+  const g = p => ancestorByPath(r.name, p);
+  const v = {};
+  // Every field is set explicitly (blank string if no data) so any
+  // stray leftover value already baked into the template PDF (e.g.
+  // a stray space character) always gets overwritten, not just skipped.
+  Object.keys(PEDIGREE_FIELD_MAP).forEach(role => { v[role] = ''; });
+  const put = (role, val) => { v[role] = (val === undefined || val === null) ? '' : String(val).trim(); };
+  put('BREED', r.breed);
+  put('DATE_OF_BIRTH', r.dob ? fmtDate(r.dob) : '');
+  put('SEX', r.sex==='doe' ? 'Doe' : r.sex==='buck' ? 'Buck' : '');
+  fillAncestorBoxValues('G1', r, put);
+  fillAncestorBoxValues('SIRE', g('s'), put);
+  fillAncestorBoxValues('DAM', g('d'), put);
+  fillAncestorBoxValues('PGS', g('ss'), put);
+  fillAncestorBoxValues('PGD', g('sd'), put);
+  fillAncestorBoxValues('MGS', g('ds'), put);
+  fillAncestorBoxValues('MGD', g('dd'), put);
+  fillAncestorBoxValues('GGSIRE1', g('sss'), put);
+  fillAncestorBoxValues('GGDAM1', g('ssd'), put);
+  fillAncestorBoxValues('GGSIRE2', g('sds'), put);
+  fillAncestorBoxValues('GGDAM2', g('sdd'), put);
+  fillAncestorBoxValues('GGSIRE3', g('dss'), put);
+  fillAncestorBoxValues('GGDAM3', g('dsd'), put);
+  fillAncestorBoxValues('GGSIRE4', g('dds'), put);
+  fillAncestorBoxValues('GGDAM4', g('ddd'), put);
+  return v;
+}
+async function downloadOfficialPedigreePDF(r){
+  try{
+    const { PDFDocument, StandardFonts } = PDFLib;
+    const existingBytes = await fetch('assets/pedigree-template.pdf').then(res=>{
+      if(!res.ok) throw new Error('Template PDF not found: '+res.status);
+      return res.arrayBuffer();
+    });
+    const pdfDoc = await PDFDocument.load(existingBytes);
+    const form = pdfDoc.getForm();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const values = buildOfficialPedigreeValues(r);
+
+    const MAX_SIZE = 11, MIN_SIZE = 6, H_PADDING = 8; // points
+    Object.entries(values).forEach(([role, value])=>{
+      const fieldId = PEDIGREE_FIELD_MAP[role];
+      if(!fieldId) return;
+      try{
+        const field = form.getTextField(fieldId);
+        // Shrink-to-fit: measure the field's real width and reduce
+        // font size only as much as needed so long values (long
+        // rabbit names, colors, etc.) never get clipped at the box
+        // edge. Falls back gracefully if widget geometry is missing.
+        let fontSize = MAX_SIZE;
+        try{
+          const widget = field.acroField.getWidgets()[0];
+          const rect = widget.getRectangle();
+          const availableWidth = Math.max(rect.width - H_PADDING, 1);
+          while (fontSize > MIN_SIZE && font.widthOfTextAtSize(value, fontSize) > availableWidth) {
+            fontSize -= 0.5;
+          }
+        }catch(geomErr){ /* keep default MAX_SIZE if geometry read fails */ }
+        field.setFontSize(fontSize);
+        field.setText(value);
+      }
+      catch(err){ console.warn('Pedigree field could not be set:', role, err); }
+    });
+    const pdfBytes = await pdfDoc.save();
+    const blob = new Blob([pdfBytes], { type:'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(r.name||'pedigree').replace(/\s+/g,'-')}-pedigree.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    console.error(err);
+    showToast('Could not generate the official PDF — check console for details.');
+  }
+}
 
 function keepKitForBreeding(damId, idx){
   const dam=rabbits.find(x=>x.id===damId); if(!dam||!dam.litterKits||!dam.litterKits[idx]) return;
@@ -1927,7 +2055,7 @@ function renderProfile(){
   if(profileTab==='overview') body.innerHTML = overviewTabHTML(r);
   else if(profileTab==='breeding') body.innerHTML = breedingTabHTML(r);
   else if(profileTab==='litters') body.innerHTML = littersTabHTML(r);
-  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions"><button class="btn btn-secondary" style="flex:1;" id="profPrint">Print / Save PDF</button></div>`;
+  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPrint">Print / Save PDF</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Download Official Pedigree PDF</button></div>`;
   else if(profileTab==='photos') body.innerHTML = photosTabHTML(r);
   else if(profileTab==='notes') body.innerHTML = notesTabHTML(r);
   wireProfileTab(r);
@@ -2016,6 +2144,7 @@ function wireProfileTab(r){
   if(profileTab==='pedigree'){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
     const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>printPedigree(r);
+    const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
   }
   if(profileTab==='litters'){ attachCardEvents(); }
   if(profileTab==='photos'){
