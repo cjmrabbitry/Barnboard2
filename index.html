@@ -6,6 +6,7 @@
 <title>CJM Legacy Rabbitry — Barn Board</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Public+Sans:wght@400;500;600&family=Jost:wght@500;600&family=JetBrains+Mono:wght@500&family=Pinyon+Script&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="pdf-lib.min.js"></script>
 <style>
   :root{
@@ -250,10 +251,62 @@
   .cal-dot{ width:8px; height:8px; border-radius:50%; margin-top:5px; flex:0 0 auto; }
   .cal-row-text{ font-size:13.5px; color:var(--ink); line-height:1.4; }
   .cal-row-text b{color:var(--navy);}
-</style>
+
+  /* Authentication */
+  body.auth-locked > *:not(#authScreen){ visibility:hidden !important; }
+  #authScreen{ position:fixed; inset:0; z-index:200; background:var(--page); display:flex; align-items:center; justify-content:center; padding:24px; overflow:auto; }
+  #authScreen.hidden{ display:none; }
+  .auth-card{ width:min(430px,100%); background:var(--card); border:1px solid var(--line); border-radius:18px; padding:28px 22px 24px; box-shadow:0 12px 40px rgba(12,24,48,.10); }
+  .auth-brand{ text-align:center; margin-bottom:24px; }
+  .auth-eyebrow{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.08em; color:var(--gold-deep); margin-bottom:5px; }
+  .auth-brand h2{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:34px; color:var(--navy); margin:0; }
+  .auth-brand p{ font-family:'Jost',sans-serif; font-size:12px; color:var(--ink-soft); margin:4px 0 0; }
+  .auth-tabs{ display:flex; gap:4px; margin-bottom:18px; padding:4px; background:var(--line); border-radius:9px; }
+  .auth-tab{ flex:1; border:0; background:transparent; color:var(--ink-soft); border-radius:7px; padding:10px; font-family:'Jost',sans-serif; font-weight:600; cursor:pointer; }
+  .auth-tab.on{ background:var(--card); color:var(--navy); box-shadow:0 1px 4px rgba(12,24,48,.08); }
+  .auth-field{ margin-bottom:12px; }
+  .auth-field label{ display:block; font-family:'Jost',sans-serif; font-size:12px; font-weight:600; margin-bottom:5px; color:var(--ink); }
+  .auth-field input{ width:100%; padding:12px; border-radius:8px; border:1px solid var(--line-strong); font-size:16px; background:var(--card); color:var(--ink); font-family:'Public Sans',sans-serif; }
+  .auth-submit{ width:100%; margin-top:4px; }
+  .auth-message{ min-height:20px; margin:10px 0 0; font-size:12.5px; line-height:1.4; text-align:center; color:var(--rust); }
+  .auth-message.ok{ color:var(--marsh); }
+  .auth-forgot{ display:block; border:0; background:none; margin:12px auto 0; color:var(--ink-soft); text-decoration:underline; font-family:'Public Sans',sans-serif; font-size:12px; cursor:pointer; }
+  .auth-user{ font-size:11px; color:var(--navbar-dim); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:8px; }
+  </style>
 <style id="pp-page-size">@page{ size: landscape; margin: 0.15in; }</style>
 </head>
-<body>
+<body class="auth-locked">
+
+<div id="authScreen">
+  <div class="auth-card">
+    <div class="auth-brand">
+      <div class="auth-eyebrow">CJM LEGACY RABBITRY</div>
+      <h2>Barn Board</h2>
+      <p>Rabbitry management, wherever you are.</p>
+    </div>
+    <div class="auth-tabs">
+      <button class="auth-tab on" id="authLoginTab" type="button">Sign in</button>
+      <button class="auth-tab" id="authSignupTab" type="button">Create account</button>
+    </div>
+    <form id="authForm">
+      <div class="auth-field">
+        <label for="authEmail">Email</label>
+        <input id="authEmail" type="email" autocomplete="email" required>
+      </div>
+      <div class="auth-field">
+        <label for="authPassword">Password</label>
+        <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required>
+      </div>
+      <div class="auth-field" id="authConfirmWrap" style="display:none;">
+        <label for="authConfirm">Confirm password</label>
+        <input id="authConfirm" type="password" autocomplete="new-password" minlength="6">
+      </div>
+      <button class="btn btn-primary auth-submit" id="authSubmit" type="submit">Sign in</button>
+      <button class="auth-forgot" id="authForgot" type="button">Forgot password?</button>
+      <div class="auth-message" id="authMessage"></div>
+    </form>
+  </div>
+</div>
 
 <header class="top">
   <div>
@@ -287,12 +340,56 @@
 <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none;">
 
 <script>
-if(!window.storage){
+const SUPABASE_URL = 'https://xzsclktdryieozfvtqkv.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_pSzehmsrfUstMmwI4zjX-w_4SsNkvdI';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let currentUser = null;
+let cloudDataCache = {};
+let cloudDataReady = false;
+
+// Keep a read-only path to the old browser storage so the first login can
+// migrate an existing Barn Board from this device into the cloud.
+const legacyStorage = {
+  get: async (key)=>{ const v=localStorage.getItem('cjm_'+key); if(v===null) throw new Error('not found'); return {value:v}; },
+  set: async (key,val)=>{ localStorage.setItem('cjm_'+key,val); return {ok:true}; }
+};
+
+async function initCloudStorage(user){
+  currentUser = user;
+  const {data:row,error} = await sb.from('barn_data').select('data').eq('user_id',user.id).maybeSingle();
+  if(error) throw error;
+  if(row && row.data){
+    cloudDataCache = row.data || {};
+  } else {
+    cloudDataCache = {};
+    // Migrate existing local data on this device when available.
+    const legacyKeys = [RABBITS_KEY, PLANNED_KEY, EVENTS_KEY, THEME_KEY];
+    for(const key of legacyKeys){
+      try{ cloudDataCache[key] = JSON.parse((await legacyStorage.get(key)).value); }catch(e){
+        try{ cloudDataCache[key] = (await legacyStorage.get(key)).value; }catch(ignore){}
+      }
+    }
+  }
+  cloudDataReady = true;
   window.storage = {
-    get: async (key)=>{ const v=localStorage.getItem('cjm_'+key); if(v===null) throw new Error('not found'); return {value:v}; },
-    set: async (key,val)=>{ localStorage.setItem('cjm_'+key, val); return {ok:true}; }
+    get: async (key)=>{
+      if(!cloudDataReady) throw new Error('Cloud storage is not ready');
+      if(!(key in cloudDataCache)) throw new Error('not found');
+      const v=cloudDataCache[key];
+      return {value:typeof v==='string'?v:JSON.stringify(v)};
+    },
+    set: async (key,val)=>{
+      if(!cloudDataReady || !currentUser) throw new Error('Not signed in');
+      let parsed;
+      try{ parsed=JSON.parse(val); }catch(e){ parsed=val; }
+      cloudDataCache[key]=parsed;
+      const {error}=await sb.from('barn_data').upsert({user_id:currentUser.id,data:cloudDataCache},{onConflict:'user_id'});
+      if(error) throw error;
+      return {ok:true};
+    }
   };
 }
+
 const RABBITS_KEY = 'rabbits_v2';
 const PLANNED_KEY = 'planned_v1';
 const EVENTS_KEY = 'events_v1';
@@ -2052,7 +2149,12 @@ function openAddPlannedSheet(presetDoeId){
 function openMoreSheet(){
   const items=[['add','Add rabbit'],['import','Import from CSV'],['planned','Planned breedings'],['forsale','For sale'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
-    ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}`);
+    <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
+      <div class="section-label" style="margin:0 0 3px;">SIGNED IN AS</div>
+      <div style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(currentUser?.email||'')}</div>
+    </div>
+    ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}
+    <button class="btn btn-danger" style="width:100%; margin-top:4px;" id="signOutBtn">Sign out</button>`);
   document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.more;
     if(k==='add') openAddSheet();
@@ -2060,6 +2162,11 @@ function openMoreSheet(){
     else if(k==='import') openImportCsvSheet();
     else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
   });
+  document.getElementById('signOutBtn').onclick = async ()=>{
+    closeSheet();
+    const {error}=await sb.auth.signOut();
+    if(error) showToast(error.message);
+  };
 }
 
 function renderForSale(main){
@@ -2699,7 +2806,106 @@ function commitCsvImport(){
   csvImportRows = [];
 }
 
-loadData();
+// Authentication UI
+let authMode = 'login';
+const authScreen = document.getElementById('authScreen');
+const authForm = document.getElementById('authForm');
+const authEmail = document.getElementById('authEmail');
+const authPassword = document.getElementById('authPassword');
+const authConfirm = document.getElementById('authConfirm');
+const authConfirmWrap = document.getElementById('authConfirmWrap');
+const authSubmit = document.getElementById('authSubmit');
+const authMessage = document.getElementById('authMessage');
+const authLoginTab = document.getElementById('authLoginTab');
+const authSignupTab = document.getElementById('authSignupTab');
+const authForgot = document.getElementById('authForgot');
+
+function setAuthMessage(text,ok=false){ authMessage.textContent=text||''; authMessage.className='auth-message'+(ok?' ok':''); }
+function setAuthMode(mode){
+  authMode=mode;
+  const signup=mode==='signup';
+  authLoginTab.classList.toggle('on',!signup);
+  authSignupTab.classList.toggle('on',signup);
+  authConfirmWrap.style.display=signup?'block':'none';
+  authConfirm.required=signup;
+  authSubmit.textContent=signup?'Create account':'Sign in';
+  authForgot.style.display=signup?'none':'block';
+  authPassword.autocomplete=signup?'new-password':'current-password';
+  setAuthMessage('');
+}
+
+authLoginTab.onclick=()=>setAuthMode('login');
+authSignupTab.onclick=()=>setAuthMode('signup');
+
+authForm.onsubmit=async (e)=>{
+  e.preventDefault();
+  const email=authEmail.value.trim();
+  const password=authPassword.value;
+  if(authMode==='signup' && password!==authConfirm.value){ setAuthMessage('Passwords do not match.'); return; }
+  authSubmit.disabled=true;
+  setAuthMessage(authMode==='signup'?'Creating your Barn Board account…':'Signing you in…',true);
+  try{
+    if(authMode==='signup'){
+      const {data,error}=await sb.auth.signUp({email,password});
+      if(error) throw error;
+      if(data.session){
+        setAuthMessage('Account created. Loading Barn Board…',true);
+      } else {
+        setAuthMessage('Account created. Check your email to confirm your account, then sign in.',true);
+        authPassword.value=''; authConfirm.value='';
+        setAuthMode('login'); authEmail.value=email;
+      }
+    } else {
+      const {error}=await sb.auth.signInWithPassword({email,password});
+      if(error) throw error;
+    }
+  }catch(err){ setAuthMessage(err.message||'Something went wrong.'); }
+  finally{ authSubmit.disabled=false; }
+};
+
+authForgot.onclick=async ()=>{
+  const email=authEmail.value.trim();
+  if(!email){ setAuthMessage('Enter your email address first.'); authEmail.focus(); return; }
+  authForgot.disabled=true;
+  try{
+    const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+window.location.pathname});
+    if(error) throw error;
+    setAuthMessage('Password reset instructions sent to your email.',true);
+  }catch(err){ setAuthMessage(err.message||'Could not send reset email.'); }
+  finally{ authForgot.disabled=false; }
+};
+
+async function enterApp(user){
+  try{
+    document.body.classList.add('auth-locked');
+    await initCloudStorage(user);
+    authScreen.classList.add('hidden');
+    document.body.classList.remove('auth-locked');
+    await loadData();
+  }catch(err){
+    console.error(err);
+    authScreen.classList.remove('hidden');
+    document.body.classList.add('auth-locked');
+    setAuthMessage('Could not connect to Barn Board data. '+(err.message||''));
+  }
+}
+
+sb.auth.onAuthStateChange((event,session)=>{
+  if(session?.user){
+    if(event==='INITIAL_SESSION' || event==='SIGNED_IN' || event==='USER_UPDATED') enterApp(session.user);
+  } else {
+    currentUser=null; cloudDataReady=false; cloudDataCache={};
+    authScreen.classList.remove('hidden');
+    document.body.classList.add('auth-locked');
+    setAuthMode('login');
+    authPassword.value=''; authConfirm.value='';
+  }
+});
+
+// Ask Supabase for the current session so a returning user goes straight in.
+sb.auth.getSession().then(({data})=>{
+  if(data.session) enterApp(data.session.user);
+});
 </script>
 </body>
 </html>
