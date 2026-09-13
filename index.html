@@ -141,8 +141,8 @@
   #printPedigree.active{display:block;}
   .pp-page{ background:#f6efe0; color:#0c1830; font-family:'Public Sans',sans-serif; position:relative; box-sizing:border-box; overflow:hidden; display:flex; flex-direction:column; border:3px solid #0c1830; border-radius:18px; }
   .pp-page::before{ content:''; position:absolute; inset:7px; border:1px solid #c6a15b; border-radius:13px; pointer-events:none; }
-  .pp-page.pp-landscape{ width:1027px; height:787px; padding:20px 26px 16px; }
-  .pp-page.pp-portrait{ width:787px; height:1027px; padding:20px 22px 16px; }
+  .pp-page.pp-landscape{ width:1020px; height:774px; padding:20px 26px 16px; }
+  .pp-page.pp-portrait{ width:774px; height:1014px; padding:20px 22px 16px; }
   .pp-header{ display:flex; justify-content:space-between; align-items:flex-start; flex:0 0 auto; margin-bottom:10px; }
   .pp-brand{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:32px; color:#142440; line-height:1; }
   .pp-brand2{ font-family:'Jost',sans-serif; font-size:12px; letter-spacing:.25em; color:#b08535; margin-top:2px; }
@@ -185,9 +185,14 @@
   .pp-portrait.pp-simple .pp-simple-box-color{ font-size:8.8px; }
   .pp-portrait.pp-simple .pp-pill{ font-size:7.6px; }
   @media print{
-    body *{visibility:hidden;}
-    #printPedigree, #printPedigree *{visibility:visible;}
-    #printPedigree{position:absolute; top:0; left:0;}
+    /* display:none (not visibility:hidden) so the rest of the app
+       contributes zero layout height during print — otherwise the
+       normal screen content, though invisible, still occupies its
+       full height and can push pagination to a spurious near-blank
+       second page once it's taller than the printable page area. */
+    body > *:not(#printPedigree){ display:none !important; }
+    body{ padding-bottom:0 !important; margin:0 !important; }
+    #printPedigree{ position:static; }
   }
 
   /* Rabbits sub-nav + profile screen + photos + notes + calendar */
@@ -1637,7 +1642,7 @@ function openPedigreeSheet(r){
       <button class="btn btn-primary" id="f-official-pdf" style="flex:1 1 100%;">Download Official Pedigree PDF</button>
     </div>`);
   wirePedigreeTaps(document.getElementById('sheet'), r, back);
-  document.getElementById('f-print').onclick=()=>openPrintOptionsSheet(r);
+  document.getElementById('f-print').onclick=()=>openPrintOptionsSheet(r, back);
   document.getElementById('f-official-pdf').onclick=()=>downloadOfficialPedigreePDF(r);
 }
 function openQuickNameSheet(parent, rel, back){
@@ -1714,22 +1719,21 @@ function ppBoxFieldsSimple(n){
   return `<div class="pp-simple-box-name">${esc(n.name||'')}</div>
     <div class="pp-simple-box-color">${esc(n.color||'')}</div>`;
 }
-function ppBoxMarkup(n, label, detail, compact){
+function ppBoxMarkup(n, label, detail, compact, id){
   n = n||{};
   const inner = detail==='simple' ? ppBoxFieldsSimple(n) : (compact ? ppBoxFieldsCompact(n) : ppBoxFieldsFull(n));
-  return `<div class="pp-box ${detail==='simple'?'pp-box-simple':''}">
+  return `<div class="pp-box ${detail==='simple'?'pp-box-simple':''}" id="${id}">
     <div class="pp-pill">${esc(label)}</div>${inner}</div>`;
 }
-function ppBox(n, label, gridColumn, rowStart, rowSpan, detail, compact){
-  return `<div style="grid-column:${gridColumn}; grid-row:${rowStart} / span ${rowSpan};">${ppBoxMarkup(n,label,detail,compact)}</div>`;
-}
-function ppSelfBox(r, detail){
-  // Unlike the ancestor boxes, the subject rabbit has no sibling to
-  // share its column with — sizing it to fill the full 8-row span
-  // like the others left a tall, mostly-empty block. Instead it's
-  // sized to its content (same as a grandparent-tier box) and
-  // centered vertically in the column.
-  return `<div style="grid-column:1; grid-row:1 / span 8; display:flex; flex-direction:column; justify-content:center;">${ppBoxMarkup(r,'Rabbit',detail,false)}</div>`;
+function ppBoxCell(n, label, gridColumn, rowStart, rowSpan, detail, compact, id){
+  // Every box is sized to its own content and centered within the
+  // vertical space its generation slot occupies — not stretched to
+  // fill it. Because each tier's slot height already equals the
+  // combined height of the two child slots below it, this alone is
+  // enough to make every parent land exactly centered between its
+  // own two children, matching a standard pedigree chart, without
+  // any special-casing per generation.
+  return `<div style="grid-column:${gridColumn}; grid-row:${rowStart} / span ${rowSpan}; display:flex; flex-direction:column; justify-content:center;">${ppBoxMarkup(n,label,detail,compact,id)}</div>`;
 }
 function pedigreePrintHTML(r, orientation, detail){
   const g = p => ancestorByPath(r.name, p);
@@ -1738,21 +1742,21 @@ function pedigreePrintHTML(r, orientation, detail){
     <div class="pp-gen-label">GENERATION 1</div><div class="pp-gen-label">GENERATION 2</div>
     <div class="pp-gen-label">GENERATION 3</div><div class="pp-gen-label">GENERATION 4</div></div>`;
   const boxes = [
-    ppSelfBox(r, detail),
-    ppBox(g('s'), 'Sire (father)', 2, 1, 4, detail, false),
-    ppBox(g('d'), 'Dam (mother)', 2, 5, 4, detail, false),
-    ppBox(g('ss'), 'Paternal grandsire', 3, 1, 2, detail, false),
-    ppBox(g('sd'), 'Paternal granddam', 3, 3, 2, detail, false),
-    ppBox(g('ds'), 'Maternal grandsire', 3, 5, 2, detail, false),
-    ppBox(g('dd'), 'Maternal granddam', 3, 7, 2, detail, false),
-    ppBox(g('sss'), 'GG sire 1', 4, 1, 1, detail, true),
-    ppBox(g('ssd'), 'GG dam 1', 4, 2, 1, detail, true),
-    ppBox(g('sds'), 'GG sire 2', 4, 3, 1, detail, true),
-    ppBox(g('sdd'), 'GG dam 2', 4, 4, 1, detail, true),
-    ppBox(g('dss'), 'GG sire 3', 4, 5, 1, detail, true),
-    ppBox(g('dsd'), 'GG dam 3', 4, 6, 1, detail, true),
-    ppBox(g('dds'), 'GG sire 4', 4, 7, 1, detail, true),
-    ppBox(g('ddd'), 'GG dam 4', 4, 8, 1, detail, true),
+    ppBoxCell(r, 'Rabbit', 1, 1, 8, detail, false, 'pp-self'),
+    ppBoxCell(g('s'), 'Sire (father)', 2, 1, 4, detail, false, 'pp-sire'),
+    ppBoxCell(g('d'), 'Dam (mother)', 2, 5, 4, detail, false, 'pp-dam'),
+    ppBoxCell(g('ss'), 'Paternal grandsire', 3, 1, 2, detail, false, 'pp-ss'),
+    ppBoxCell(g('sd'), 'Paternal granddam', 3, 3, 2, detail, false, 'pp-sd'),
+    ppBoxCell(g('ds'), 'Maternal grandsire', 3, 5, 2, detail, false, 'pp-ds'),
+    ppBoxCell(g('dd'), 'Maternal granddam', 3, 7, 2, detail, false, 'pp-dd'),
+    ppBoxCell(g('sss'), 'GG sire 1', 4, 1, 1, detail, true, 'pp-sss'),
+    ppBoxCell(g('ssd'), 'GG dam 1', 4, 2, 1, detail, true, 'pp-ssd'),
+    ppBoxCell(g('sds'), 'GG sire 2', 4, 3, 1, detail, true, 'pp-sds'),
+    ppBoxCell(g('sdd'), 'GG dam 2', 4, 4, 1, detail, true, 'pp-sdd'),
+    ppBoxCell(g('dss'), 'GG sire 3', 4, 5, 1, detail, true, 'pp-dss'),
+    ppBoxCell(g('dsd'), 'GG dam 3', 4, 6, 1, detail, true, 'pp-dsd'),
+    ppBoxCell(g('dds'), 'GG sire 4', 4, 7, 1, detail, true, 'pp-dds'),
+    ppBoxCell(g('ddd'), 'GG dam 4', 4, 8, 1, detail, true, 'pp-ddd'),
   ].join('');
   const headerRight = detail==='simple'
     ? `<div class="pp-simple-title"><div class="pp-simple-name">Ear # ${esc(r.earNumber||'—')}</div><div class="pp-simple-dob">${r.dob?'Born '+fmtDate(r.dob):''}</div></div>`
@@ -1768,7 +1772,10 @@ function pedigreePrintHTML(r, orientation, detail){
         ${headerRight}
       </div>
       ${genLabels}
-      <div class="pp-grid" style="grid-template-columns:${cols}; grid-template-rows:repeat(8,1fr);">${boxes}</div>
+      <div class="pp-grid" id="pp-grid-wrap" style="grid-template-columns:${cols}; grid-template-rows:repeat(8,1fr); position:relative;">
+        <svg id="pp-lines" style="position:absolute; top:0; left:0; pointer-events:none; overflow:visible;"></svg>
+        ${boxes}
+      </div>
       <div class="pp-footer">
         <div style="font-family:'Jost',sans-serif; font-size:9px; color:#142440;">www.CJMRabbitry.com</div>
 
@@ -1776,27 +1783,53 @@ function pedigreePrintHTML(r, orientation, detail){
       </div>
     </div>`;
 }
+function drawPedigreeConnectors(){
+  const wrap=document.getElementById('pp-grid-wrap'), svg=document.getElementById('pp-lines');
+  if(!wrap||!svg) return;
+  const cr=wrap.getBoundingClientRect();
+  svg.setAttribute('width',cr.width); svg.setAttribute('height',cr.height); svg.setAttribute('viewBox',`0 0 ${cr.width} ${cr.height}`);
+  const rc=id=>{ const el=document.getElementById(id); if(!el) return null; const r=el.getBoundingClientRect();
+    return {right:r.right-cr.left, left:r.left-cr.left, midY:r.top-cr.top+r.height/2}; };
+  const bracket=(c,p1,p2)=>{ const a=rc(c),b=rc(p1),d=rc(p2); if(!a||!b||!d) return '';
+    const mx=(a.right+b.left)/2;
+    return `<path d="M${a.right},${a.midY} L${mx},${a.midY} M${mx},${b.midY} L${mx},${d.midY} M${mx},${b.midY} L${b.left},${b.midY} M${mx},${d.midY} L${d.left},${d.midY}" stroke="#b08535" stroke-width="1" fill="none"/>`; };
+  svg.innerHTML=[bracket('pp-self','pp-sire','pp-dam'),bracket('pp-sire','pp-ss','pp-sd'),bracket('pp-dam','pp-ds','pp-dd'),
+    bracket('pp-ss','pp-sss','pp-ssd'),bracket('pp-sd','pp-sds','pp-sdd'),bracket('pp-ds','pp-dss','pp-dsd'),bracket('pp-dd','pp-dds','pp-ddd')].join('');
+}
 function printPedigreeAdvanced(r, orientation, detail){
   const sizeStr = orientation==='landscape' ? '11in 8.5in' : '8.5in 11in';
   document.getElementById('pp-page-size').textContent = `@page{ size: ${sizeStr}; margin: 0.15in; }`;
   document.getElementById('printPedigree').innerHTML = pedigreePrintHTML(r, orientation, detail);
   document.getElementById('printPedigree').classList.add('active');
-  requestAnimationFrame(()=>requestAnimationFrame(()=>{ setTimeout(()=>window.print(),60); }));
+  // Wait for the web fonts to actually finish loading before measuring
+  // or printing — printing too early can silently use fallback-font
+  // metrics that are taller than the real fonts, which pushed content
+  // past the fixed page height and got clipped at the bottom edge.
+  const ready = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+  ready.then(()=>{
+    requestAnimationFrame(()=>requestAnimationFrame(()=>{
+      drawPedigreeConnectors();
+      setTimeout(()=>window.print(),60);
+    }));
+  });
 }
 window.addEventListener('afterprint',()=>document.getElementById('printPedigree').classList.remove('active'));
-function openPrintOptionsSheet(r){
+function openPrintOptionsSheet(r, back){
   let orientation='landscape', detail='full';
-  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+  const returnHome = ()=>{ closeSheet(); if(back) back(); };
+  openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>${esc(r.name)} — Print / Save PDF</h2>
     <div class="field"><label>Orientation</label><div class="seg" id="f-orient">
       <button data-v="landscape" class="on">Sideways (landscape)</button><button data-v="portrait">Long ways (portrait)</button></div></div>
     <div class="field"><label>Detail level</label><div class="seg" id="f-detail">
       <button data-v="full" class="on">Full pedigree</button><button data-v="simple">Simplified — name &amp; color only</button></div></div>
     <div class="card-sub" style="margin-bottom:6px;">Always fits on a single page. In the print dialog, choose "Save as PDF" to download instead of printing.</div>
-    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-go">Generate</button></div>`);
+    <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-go">Generate</button></div>`);
+  document.getElementById('f-cancel-x').onclick = returnHome;
+  document.getElementById('f-cancel').onclick = returnHome;
   document.querySelectorAll('#f-orient button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-orient button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); orientation=b.dataset.v; });
   document.querySelectorAll('#f-detail button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-detail button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); detail=b.dataset.v; });
-  document.getElementById('f-go').onclick=()=>{ closeSheet(); printPedigreeAdvanced(r, orientation, detail); };
+  document.getElementById('f-go').onclick=()=>{ returnHome(); printPedigreeAdvanced(r, orientation, detail); };
 }
 
 /* ============================================================
@@ -2213,7 +2246,7 @@ function wireProfileTab(r){
   });
   if(profileTab==='pedigree'){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
-    const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>openPrintOptionsSheet(r);
+    const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>openPrintOptionsSheet(r, renderProfile);
     const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
   }
   if(profileTab==='litters'){ attachCardEvents(); }
