@@ -221,9 +221,26 @@
   .photo-chip.on{ background:var(--navy); color:var(--page); border-color:var(--navy); }
   [data-theme="dark"] .photo-chip.on{background:var(--gold-deep); color:#0c1830;}
   .photo-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:14px; }
-  .photo-thumb-wrap{ position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; border:1px solid var(--line); }
+  .photo-thumb-wrap{ position:relative; aspect-ratio:1; border-radius:8px; overflow:hidden; border:1px solid var(--line); cursor:pointer; }
   .photo-thumb-wrap img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .photo-del{ position:absolute; top:3px; right:3px; width:22px; height:22px; border-radius:50%; background:rgba(12,24,48,.65); color:#fff; border:none; font-size:14px; line-height:1; cursor:pointer; }
+  .photo-del{ position:absolute; top:3px; right:3px; width:22px; height:22px; border-radius:50%; background:rgba(12,24,48,.65); color:#fff; border:none; font-size:14px; line-height:1; cursor:pointer; z-index:2; }
+  .photo-viewer{ position:fixed; inset:0; background:#0c1830; z-index:60; display:none; flex-direction:column; touch-action:none; }
+  .photo-viewer.on{ display:flex; }
+  .pv-topbar{ flex:0 0 auto; display:flex; align-items:center; justify-content:space-between; padding:10px 6px; background:rgba(0,0,0,.35); z-index:2; }
+  .pv-icon-btn{ width:44px; height:44px; border-radius:50%; background:none; border:none; color:#fffdf8; font-size:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .pv-title{ font-family:'Jost',sans-serif; font-size:13px; color:#e5cd97; font-weight:600; }
+  .pv-stage{ flex:1 1 auto; position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .pv-stage img{ max-width:100%; max-height:100%; -webkit-user-select:none; user-select:none; will-change:transform; }
+  .pv-crop-mask{ position:absolute; inset:0; background:rgba(0,0,0,.55); pointer-events:none; }
+  .pv-crop-box{ position:absolute; border:2px solid #e5cd97; box-shadow:0 0 0 999px rgba(0,0,0,.55); cursor:move; touch-action:none; }
+  .pv-crop-handle{ position:absolute; width:26px; height:26px; margin:-13px; background:#e5cd97; border-radius:50%; border:2px solid #0c1830; touch-action:none; }
+  .pv-crop-handle[data-h="nw"]{ top:0; left:0; cursor:nwse-resize; }
+  .pv-crop-handle[data-h="ne"]{ top:0; right:0; margin-right:-13px; cursor:nesw-resize; }
+  .pv-crop-handle[data-h="sw"]{ bottom:0; left:0; margin-bottom:-13px; cursor:nesw-resize; }
+  .pv-crop-handle[data-h="se"]{ bottom:0; right:0; margin-right:-13px; margin-bottom:-13px; cursor:nwse-resize; }
+  .pv-bottombar{ flex:0 0 auto; display:flex; gap:10px; padding:12px 14px calc(14px + env(safe-area-inset-bottom)); background:rgba(0,0,0,.35); }
+  .pv-bottombar .btn{ flex:1; }
+  .pv-hint{ position:absolute; bottom:10px; left:0; right:0; text-align:center; color:rgba(255,253,248,.6); font-family:'Jost',sans-serif; font-size:11px; pointer-events:none; }
   .note-entry{ border-left:3px solid var(--gold-deep); padding:6px 0 8px 10px; margin-bottom:10px; }
   .note-date{ font-family:'JetBrains Mono',monospace; font-size:10px; color:var(--ink-soft); opacity:.75; margin-bottom:3px; }
   .note-text{ font-size:13.5px; color:var(--ink); line-height:1.5; white-space:pre-wrap; }
@@ -265,6 +282,7 @@
 <div class="toast" id="toast"></div>
 <div id="printPedigree"></div>
 <div class="profile-view" id="profileView"></div>
+<div class="photo-viewer" id="photoViewer"></div>
 <input type="file" id="photoFileInput" accept="image/*" style="display:none;">
 
 <script>
@@ -381,6 +399,7 @@ function enrichFromRoster(){
     if(r.activeBreedingId===undefined) r.activeBreedingId=null;
     if(!r.notesLog){ r.notesLog = r.notes ? [{id:uid(), date:r.createdAt?r.createdAt.slice(0,10):todayStr(), text:r.notes}] : []; }
     if(!r.photos) r.photos=[];
+    r.photos.forEach(p=>{ if(p.category==='Show / Stack') p.category='Front'; });
     if(r.registrationNumber===undefined) r.registrationNumber='';
     if(r.graduatedDate===undefined) r.graduatedDate=null;
     if(r.juniorAckDone===undefined) r.juniorAckDone=false;
@@ -2112,10 +2131,8 @@ function contextualActions(r){
   if(r.status==='pregnant'){ acts.push(['kindled','Record litter'],['lost','Litter lost']); }
   else if(r.status==='nursing'){ if(canRebred(r)) acts.push(['rebred','Rebred']); acts.push(['wean','Weaned'],['editlitter','Edit litter']); }
   else if(isArchived(r)){ acts.push(['unarchive','Return to roster']); }
-  else if(r.status==='growing'){ acts.push(['graduate','Move to roster'],['edit','Edit']); }
+  else if(r.status==='growing'){ acts.push(['graduate','Move to roster']); }
   else if(r.sex==='doe'){ acts.push(['bred','Mark doe bred'],['plan','Plan a breeding']); }
-  if(r.status!=='growing' && !isArchived(r)) acts.push(['edit','Edit']);
-  acts.push(['pedigree','View pedigree'],['addphoto','Add photo'],['addnote','Add note']);
   return acts;
 }
 function profileTabsFor(r){
@@ -2174,7 +2191,7 @@ function overviewTabHTML(r){
   ];
   return `
     ${primary?`<img class="primary-photo" src="${primary.dataUrl}" alt="${esc(r.name)}">`:''}
-    <div class="qa-row">${acts.map(([a,l])=>`<button class="btn btn-secondary btn-sm" data-pa="${a}">${l}</button>`).join('')}</div>
+    ${acts.length?`<div class="qa-row">${acts.map(([a,l])=>`<button class="btn btn-secondary btn-sm" data-pa="${a}">${l}</button>`).join('')}</div>`:''}
     ${r.flag?`<div class="flag">${esc(r.flag)}</div>`:''}
     <div class="overview-grid">${rows.map(([l,v])=>`<div class="ov-cell"><div class="ov-label">${l.toUpperCase()}</div><div class="ov-val">${esc(v)}</div></div>`).join('')}</div>
     <button class="btn btn-secondary" style="width:100%;" data-pa="edit">Edit details</button>`;
@@ -2208,14 +2225,14 @@ function littersTabHTML(r){
       <div class="card-detail">Sired by ${esc(e.partner||'?')} &middot; ${e.litterKits?e.litterKits.length:0} kits${dead?' &middot; '+dead:''}</div></div>`;
   }).join('');
 }
-function photoCategories(){ return ['Primary','Show / Stack','Side Profile','Pedigree Photo','Other']; }
+function photoCategories(){ return ['Primary','Front','Side Profile','Pedigree Photo','Other']; }
 function photosTabHTML(r){
   const cats = photoCategories();
   const photos = (r.photos||[]).filter(p=>p.category===photoActiveCategory);
   return `
     <div class="photo-chips">${cats.map(c=>`<button class="photo-chip ${photoActiveCategory===c?'on':''}" data-pcat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
     <button class="btn btn-primary" style="width:100%; margin-bottom:14px;" id="profAddPhoto">+ Add photo to ${esc(photoActiveCategory)}</button>
-    <div class="photo-grid">${photos.map(p=>`<div class="photo-thumb-wrap"><img src="${p.dataUrl}" alt=""><button class="photo-del" data-pdel="${p.id}">&times;</button></div>`).join('')}</div>
+    <div class="photo-grid">${photos.map(p=>`<div class="photo-thumb-wrap" data-popen="${p.id}"><img src="${p.dataUrl}" alt=""><button class="photo-del" data-pdel="${p.id}">&times;</button></div>`).join('')}</div>
     ${!photos.length?`<div class="empty">No ${esc(photoActiveCategory).toLowerCase()} photos yet.</div>`:''}`;
 }
 function notesTabHTML(r){
@@ -2244,6 +2261,13 @@ function wireProfileTab(r){
       else if(a==='litters'){ profileTab='litters'; renderProfile(); }
     };
   });
+  if(profileTab==='breeding'){
+    document.querySelectorAll('[data-histedit]').forEach(b=>b.onclick=()=>{
+      const [damId,entryId]=b.dataset.histedit.split(':');
+      const dam=rabbits.find(x=>x.id===damId); const entry=dam&&dam.breedingHistory.find(x=>x.id===entryId);
+      if(dam&&entry) openHistoryEditSheet(dam, entry, ()=>{ closeSheet(); renderProfile(); });
+    });
+  }
   if(profileTab==='pedigree'){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
     const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>openPrintOptionsSheet(r, renderProfile);
@@ -2268,8 +2292,14 @@ function wireProfileTab(r){
       };
       input.click();
     };
-    document.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('[data-pdel]').forEach(b=>b.onclick=(ev)=>{
+      ev.stopPropagation();
       armConfirm(b,'Tap again',()=>{ r.photos=(r.photos||[]).filter(p=>p.id!==b.dataset.pdel); saveData(); renderProfile(); });
+    });
+    document.querySelectorAll('[data-popen]').forEach(el=>el.onclick=(ev)=>{
+      if(ev.target.closest('[data-pdel]')) return;
+      const photo=(r.photos||[]).find(p=>p.id===el.dataset.popen);
+      if(photo) openPhotoViewer(r, photo);
     });
   }
   if(profileTab==='notes'){
@@ -2281,6 +2311,221 @@ function wireProfileTab(r){
       saveData(); renderProfile(); showToast('Note added');
     };
   }
+}
+
+/* ============================================================
+   PHOTO VIEWER — full-size view with pinch/wheel zoom + pan,
+   plus a crop tool that writes the cropped result back in place.
+   ============================================================ */
+let pvState = null; // { rabbitId, photoId, mode:'view'|'crop', scale, tx, ty }
+
+function openPhotoViewer(r, photo){
+  pvState = { rabbitId:r.id, photoId:photo.id, mode:'view', scale:1, tx:0, ty:0 };
+  renderPhotoViewer();
+  document.getElementById('photoViewer').classList.add('on');
+}
+function closePhotoViewer(){
+  document.getElementById('photoViewer').classList.remove('on');
+  document.getElementById('photoViewer').innerHTML='';
+  pvState=null;
+}
+function renderPhotoViewer(){
+  if(!pvState) return;
+  const r = rabbits.find(x=>x.id===pvState.rabbitId);
+  const photo = r && (r.photos||[]).find(p=>p.id===pvState.photoId);
+  const el = document.getElementById('photoViewer');
+  if(!r || !photo){ closePhotoViewer(); return; }
+  const cropping = pvState.mode==='crop';
+  el.innerHTML = `
+    <div class="pv-topbar">
+      <button class="pv-icon-btn" id="pvClose" aria-label="Close">&times;</button>
+      <div class="pv-title">${esc(photo.category||'Photo')}</div>
+      <button class="pv-icon-btn" id="pvDelete" aria-label="Delete">&#128465;</button>
+    </div>
+    <div class="pv-stage" id="pvStage">
+      <img id="pvImg" src="${photo.dataUrl}" draggable="false">
+      ${cropping ? `<div class="pv-crop-mask"></div><div class="pv-crop-box" id="pvCropBox">
+        <div class="pv-crop-handle" data-h="nw"></div><div class="pv-crop-handle" data-h="ne"></div>
+        <div class="pv-crop-handle" data-h="sw"></div><div class="pv-crop-handle" data-h="se"></div>
+      </div>` : `<div class="pv-hint">Pinch or scroll to zoom &middot; drag to pan</div>`}
+    </div>
+    <div class="pv-bottombar">
+      ${cropping
+        ? `<button class="btn btn-secondary" id="pvCropCancel">Cancel</button><button class="btn btn-primary" id="pvCropApply">Apply crop</button>`
+        : `<button class="btn btn-secondary" id="pvCropBtn">Crop</button>`}
+    </div>`;
+  wirePhotoViewer(r, photo);
+}
+function pvApplyTransform(){
+  const img=document.getElementById('pvImg'); if(!img) return;
+  img.style.transform = `translate(${pvState.tx}px, ${pvState.ty}px) scale(${pvState.scale})`;
+}
+function wirePhotoViewer(r, photo){
+  document.getElementById('pvClose').onclick = closePhotoViewer;
+  const delBtn = document.getElementById('pvDelete');
+  delBtn.onclick = ()=>{
+    armConfirm(delBtn, 'Tap again to delete', ()=>{
+      r.photos = (r.photos||[]).filter(p=>p.id!==photo.id);
+      saveData(); closePhotoViewer(); renderProfile(); showToast('Photo deleted');
+    });
+  };
+
+  if(pvState.mode==='view'){
+    const stage = document.getElementById('pvStage');
+    const img = document.getElementById('pvImg');
+    pvApplyTransform();
+    const pointers = new Map();
+    let lastDist = null, lastMid = null;
+
+    function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+    function mid(a,b){ return {x:(a.x+b.x)/2, y:(a.y+b.y)/2}; }
+    function clampPan(){
+      const maxPan = Math.max(0, (pvState.scale-1)) * (stage.clientWidth/2) + 40;
+      pvState.tx = Math.max(-maxPan, Math.min(maxPan, pvState.tx));
+      pvState.ty = Math.max(-maxPan, Math.min(maxPan, pvState.ty));
+    }
+
+    stage.onpointerdown = (e)=>{
+      stage.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+      if(pointers.size===2){
+        const [a,b] = [...pointers.values()];
+        lastDist = dist(a,b); lastMid = mid(a,b);
+      }
+    };
+    stage.onpointermove = (e)=>{
+      if(!pointers.has(e.pointerId)) return;
+      const prev = pointers.get(e.pointerId);
+      const cur = {x:e.clientX, y:e.clientY};
+      pointers.set(e.pointerId, cur);
+      if(pointers.size===2){
+        const [a,b] = [...pointers.values()];
+        const d = dist(a,b), m = mid(a,b);
+        if(lastDist){
+          const factor = d/lastDist;
+          pvState.scale = Math.max(1, Math.min(5, pvState.scale*factor));
+        }
+        if(lastMid){ pvState.tx += m.x-lastMid.x; pvState.ty += m.y-lastMid.y; }
+        lastDist = d; lastMid = m;
+        clampPan(); pvApplyTransform();
+      } else if(pointers.size===1 && pvState.scale>1){
+        pvState.tx += cur.x-prev.x; pvState.ty += cur.y-prev.y;
+        clampPan(); pvApplyTransform();
+      }
+    };
+    function endPointer(e){
+      pointers.delete(e.pointerId);
+      if(pointers.size<2){ lastDist=null; lastMid=null; }
+    }
+    stage.onpointerup = endPointer;
+    stage.onpointercancel = endPointer;
+    stage.onwheel = (e)=>{
+      e.preventDefault();
+      const factor = e.deltaY<0 ? 1.12 : 1/1.12;
+      pvState.scale = Math.max(1, Math.min(5, pvState.scale*factor));
+      clampPan(); pvApplyTransform();
+    };
+    stage.ondblclick = ()=>{
+      pvState.scale = pvState.scale>1 ? 1 : 2.5;
+      pvState.tx=0; pvState.ty=0;
+      pvApplyTransform();
+    };
+    document.getElementById('pvCropBtn').onclick = ()=>{
+      pvState.mode='crop'; pvState.scale=1; pvState.tx=0; pvState.ty=0;
+      renderPhotoViewer();
+    };
+  } else {
+    wireCropMode(r, photo);
+  }
+}
+function wireCropMode(r, photo){
+  const img = document.getElementById('pvImg');
+  const box = document.getElementById('pvCropBox');
+  document.getElementById('pvCropCancel').onclick = ()=>{ pvState.mode='view'; renderPhotoViewer(); };
+
+  function initBox(){
+    const ir = img.getBoundingClientRect();
+    const w = ir.width*0.8, h = ir.height*0.8;
+    box.dataset.x = ir.left + (ir.width-w)/2;
+    box.dataset.y = ir.top + (ir.height-h)/2;
+    box.dataset.w = w; box.dataset.h = h;
+    paintBox();
+  }
+  function paintBox(){
+    const stage = document.getElementById('pvStage').getBoundingClientRect();
+    box.style.left = (parseFloat(box.dataset.x)-stage.left)+'px';
+    box.style.top = (parseFloat(box.dataset.y)-stage.top)+'px';
+    box.style.width = box.dataset.w+'px';
+    box.style.height = box.dataset.h+'px';
+  }
+  // Wait a frame so the image has its natural rendered size before measuring.
+  requestAnimationFrame(()=>requestAnimationFrame(initBox));
+
+  const MIN=40;
+  function imgBounds(){ return img.getBoundingClientRect(); }
+
+  box.onpointerdown = (e)=>{
+    if(e.target.closest('.pv-crop-handle')) return;
+    e.preventDefault();
+    box.setPointerCapture(e.pointerId);
+    const startX=e.clientX, startY=e.clientY;
+    const ox=parseFloat(box.dataset.x), oy=parseFloat(box.dataset.y);
+    box.onpointermove = (ev)=>{
+      const ib = imgBounds();
+      const w=parseFloat(box.dataset.w), h=parseFloat(box.dataset.h);
+      let nx = ox + (ev.clientX-startX), ny = oy + (ev.clientY-startY);
+      nx = Math.max(ib.left, Math.min(ib.left+ib.width-w, nx));
+      ny = Math.max(ib.top, Math.min(ib.top+ib.height-h, ny));
+      box.dataset.x=nx; box.dataset.y=ny; paintBox();
+    };
+    box.onpointerup = ()=>{ box.onpointermove=null; box.onpointerup=null; };
+  };
+
+  box.querySelectorAll('.pv-crop-handle').forEach(h=>{
+    h.onpointerdown = (e)=>{
+      e.stopPropagation(); e.preventDefault();
+      h.setPointerCapture(e.pointerId);
+      const corner = h.dataset.h;
+      const startX=e.clientX, startY=e.clientY;
+      const ox=parseFloat(box.dataset.x), oy=parseFloat(box.dataset.y);
+      const ow=parseFloat(box.dataset.w), oh=parseFloat(box.dataset.h);
+      h.onpointermove = (ev)=>{
+        const ib = imgBounds();
+        const dx = ev.clientX-startX, dy = ev.clientY-startY;
+        let x=ox,y=oy,w=ow,hh=oh;
+        if(corner==='se'){ w=ow+dx; hh=oh+dy; }
+        else if(corner==='sw'){ x=ox+dx; w=ow-dx; hh=oh+dy; }
+        else if(corner==='ne'){ y=oy+dy; w=ow+dx; hh=oh-dy; }
+        else if(corner==='nw'){ x=ox+dx; y=oy+dy; w=ow-dx; hh=oh-dy; }
+        w=Math.max(MIN,w); hh=Math.max(MIN,hh);
+        x=Math.max(ib.left, Math.min(ib.left+ib.width-w, x));
+        y=Math.max(ib.top, Math.min(ib.top+ib.height-hh, y));
+        // Prevent the box's far edge from being pushed past the image edge as it grows.
+        w=Math.min(w, ib.left+ib.width-x); hh=Math.min(hh, ib.top+ib.height-y);
+        box.dataset.x=x; box.dataset.y=y; box.dataset.w=w; box.dataset.h=hh;
+        paintBox();
+      };
+      h.onpointerup = ()=>{ h.onpointermove=null; h.onpointerup=null; };
+    };
+  });
+
+  document.getElementById('pvCropApply').onclick = ()=>{
+    const ib = imgBounds();
+    const scaleX = img.naturalWidth/ib.width, scaleY = img.naturalHeight/ib.height;
+    const sx = (parseFloat(box.dataset.x)-ib.left)*scaleX;
+    const sy = (parseFloat(box.dataset.y)-ib.top)*scaleY;
+    const sw = parseFloat(box.dataset.w)*scaleX;
+    const sh = parseFloat(box.dataset.h)*scaleY;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1,Math.round(sw)); canvas.height = Math.max(1,Math.round(sh));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    photo.dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    saveData();
+    pvState.mode='view'; pvState.scale=1; pvState.tx=0; pvState.ty=0;
+    renderPhotoViewer(); renderProfile();
+    showToast('Photo cropped');
+  };
 }
 
 loadData();
