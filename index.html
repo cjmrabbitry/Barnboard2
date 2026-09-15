@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CJM Legacy Rabbitry — Barn Board</title>
+<title>HerdNerd Pro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Public+Sans:wght@400;500;600&family=Jost:wght@500;600&family=JetBrains+Mono:wght@500&family=Pinyon+Script&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="pdf-lib.min.js"></script>
+<script src="pdf.min.js"></script>
 <style>
   :root{
     --navy:#142440; --navy-deep:#0c1830;
@@ -35,6 +36,10 @@
   header.top{ background:var(--navbar); color:#fffdf8; padding:16px 16px 14px; display:flex; justify-content:space-between; align-items:flex-start; }
   header.top .eyebrow{ font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.06em; color:var(--gold-light); margin-bottom:3px; }
   header.top h1{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:22px; margin:0; color:#fffdf8; }
+  .wordmark{ font-family:'Cormorant Garamond',serif; font-weight:600; font-size:28px; margin:0; color:#fffdf8; }
+  .wordmark .pro{ font-style:italic; color:var(--gold-light); margin-left:6px; }
+  .auth-brand .wordmark{ font-size:32px; color:var(--navy); }
+  .auth-brand .wordmark .pro{ color:var(--gold-deep); }
   .theme-btn{ background:none; border:1px solid rgba(255,255,255,.3); border-radius:8px; color:#fffdf8; padding:6px 9px; cursor:pointer; display:flex; align-items:center; }
 
   .toolbar{ padding:10px 14px 4px; }
@@ -112,6 +117,44 @@
   .history-entry.took{border-left-color:var(--marsh);}
   .history-entry.lost{border-left-color:var(--rust);}
   .history-entry.pending{border-left-color:var(--gold-deep);}
+
+  /* Quick actions row */
+  .quick-actions{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:14px; }
+  .qa-btn{ display:flex; flex-direction:column; align-items:center; gap:6px; background:var(--card); border:1px solid var(--gold); border-radius:10px; padding:10px 4px 9px; font-family:'Jost',sans-serif; font-size:10.5px; font-weight:600; color:var(--ink); cursor:pointer; min-height:64px; text-align:center; }
+  .qa-btn .qa-icon{ height:20px; display:flex; align-items:center; justify-content:center; }
+  .qa-primary{ background:var(--navy); color:#fffdf8; border-color:var(--navy); }
+  [data-theme="dark"] .qa-primary{ background:var(--gold-deep); color:#0c1830; }
+
+  /* Show countdown banner */
+  .show-banner{ display:flex; justify-content:space-between; align-items:center; background:var(--navy); color:#fffdf8; border-radius:12px; padding:14px 16px; margin-bottom:16px; cursor:pointer; }
+  .show-banner-name{ font-family:'Cormorant Garamond',serif; font-size:17px; font-weight:600; }
+  .show-banner-sub{ font-family:'Jost',sans-serif; font-size:12px; color:var(--gold-light); margin-top:2px; }
+  .show-banner-days{ text-align:center; flex:0 0 auto; padding-left:12px; }
+  .show-banner-days .n{ font-family:'Cormorant Garamond',serif; font-size:26px; font-weight:600; color:var(--gold-light); line-height:1; }
+  .show-banner-days .l{ font-family:'JetBrains Mono',monospace; font-size:9px; color:var(--gold-light); margin-top:2px; }
+
+  /* Needs Attention rows */
+  .todo-row.overdue{ border-color:var(--rust); border-left-color:var(--rust); }
+  .todo-row{ align-items:flex-start; }
+  .todo-row.todo-complete{ opacity:.4; }
+  .todo-row.todo-complete .todo-text{ text-decoration:line-through; }
+  .todo-circle{ width:22px; height:22px; border-radius:50%; border:2px solid var(--gold-deep); flex:0 0 auto; cursor:pointer; margin-top:1px; margin-right:2px; background:transparent; }
+  .todo-circle.overdue{ border-color:var(--rust); }
+  .todo-clock{ background:none; border:none; padding:4px; cursor:pointer; color:var(--ink-soft); display:flex; align-items:center; }
+  .todo-sub-text{ font-size:12px; opacity:.75; margin-top:2px; }
+  .todo-chevron{ background:none; border:none; padding:4px; cursor:pointer; color:var(--ink-soft); flex:0 0 auto; }
+  .todo-sub{ margin:6px 0 9px 4px; padding-left:10px; border-left:2px solid var(--line); }
+  .attn-viewall{ display:block; text-align:center; font-family:'Jost',sans-serif; font-size:13px; font-weight:600; color:var(--gold-deep); background:none; border:none; width:100%; padding:8px; cursor:pointer; }
+
+  /* Coming up list */
+  .comingup-row{ display:flex; justify-content:space-between; align-items:center; padding:9px 0; border-bottom:1px solid var(--line); font-size:13.5px; }
+  .comingup-row:last-child{ border-bottom:none; }
+  .comingup-date{ opacity:.75; font-size:12.5px; flex:0 0 auto; padding-left:10px; }
+
+  /* Admin support-view banner */
+  .admin-view-banner{ display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 10px; background:var(--rust); color:#fffdf8; padding:9px 16px; font-family:'Jost',sans-serif; font-size:12.5px; font-weight:600; line-height:1.3; }
+  .admin-view-banner span{ flex:1 1 200px; min-width:0; }
+  .admin-view-banner button{ background:#fffdf8; color:var(--rust); border:none; border-radius:7px; padding:5px 11px; font-size:12px; font-weight:700; cursor:pointer; flex:0 0 auto; }
   .seg{display:flex; gap:6px;}
   .seg button{ flex:1; padding:12px 9px; min-height:44px; border-radius:8px; border:1px solid var(--line-strong); background:var(--card); font-family:'Jost',sans-serif; font-size:13.5px; font-weight:600; color:var(--ink); cursor:pointer; }
   .seg button.on{background:var(--navy); color:var(--page); border-color:var(--navy);}
@@ -340,8 +383,7 @@
 <div id="authScreen">
   <div class="auth-card">
     <div class="auth-brand">
-      <div class="auth-eyebrow">CJM LEGACY RABBITRY</div>
-      <h2>Barn Board</h2>
+      <div class="wordmark">HerdNerd<span class="pro">Pro</span></div>
       <p>Rabbitry management, wherever you are.</p>
     </div>
     <div class="auth-tabs">
@@ -369,10 +411,7 @@
 </div>
 
 <header class="top">
-  <div>
-    <div class="eyebrow">CJM LEGACY RABBITRY</div>
-    <h1>Barn Board</h1>
-  </div>
+  <div class="wordmark">HerdNerd<span class="pro">Pro</span></div>
   <button class="theme-btn" id="themeBtn" aria-label="Toggle dark mode">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
   </button>
@@ -384,8 +423,10 @@
     <input type="search" id="searchInput" placeholder="Search by name, ear #, color, or breed">
     <button id="searchClear" aria-label="Clear search" style="display:none;">&times;</button>
   </div>
-  <button class="btn btn-secondary quickbred" id="quickBredBtn">+ Mark a doe bred</button>
+  <button class="btn btn-secondary quickbred" id="quickBredBtn">+ Record a breeding</button>
 </div>
+
+<div class="admin-view-banner" id="adminViewBanner" style="display:none;"></div>
 
 <main id="main"></main>
 
@@ -399,17 +440,20 @@
 <div class="photo-viewer" id="photoViewer"></div>
 <input type="file" id="photoFileInput" accept="image/*" style="display:none;">
 <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none;">
+<input type="file" id="pedigreePdfFileInput" accept=".pdf,application/pdf" style="display:none;">
 
 <script>
+if (window.pdfjsLib) { pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js'; }
 const SUPABASE_URL = 'https://xzsclktdryieozfvtqkv.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_pSzehmsrfUstMmwI4zjX-w_4SsNkvdI';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
 let currentUser = null;
+let myProfile = null, isAdminUser = false, adminSelf = null, viewingAsCustomer = null;
 let cloudDataCache = {};
 let cloudDataReady = false;
 
 // Keep a read-only path to the old browser storage so the first login can
-// migrate an existing Barn Board from this device into the cloud.
+// migrate an existing local HerdNerd Pro dataset on this device into the cloud.
 const legacyStorage = {
   get: async (key)=>{ const v=localStorage.getItem('cjm_'+key); if(v===null) throw new Error('not found'); return {value:v}; },
   set: async (key,val)=>{ localStorage.setItem('cjm_'+key,val); return {ok:true}; }
@@ -443,19 +487,60 @@ async function initCloudStorage(user){
       if(!cloudDataReady || !currentUser) throw new Error('Not signed in');
       let parsed;
       try{ parsed=JSON.parse(val); }catch(e){ parsed=val; }
+      const oldVal = cloudDataCache[key];
       cloudDataCache[key]=parsed;
       const {error}=await sb.from('barn_data').upsert({user_id:currentUser.id,data:cloudDataCache},{onConflict:'user_id'});
       if(error) throw error;
+      if(viewingAsCustomer && adminSelf){
+        sb.from('audit_log').insert({
+          admin_id: adminSelf.id, customer_id: viewingAsCustomer.id,
+          table_name: 'barn_data', row_id: key,
+          old_value: oldVal===undefined?null:oldVal, new_value: parsed
+        }).then(()=>{}, ()=>{});
+      }
       return {ok:true};
     }
   };
 }
 
+async function loadMyProfile(){
+  try{
+    const {data} = await sb.from('profiles').select('*').eq('id',currentUser.id).maybeSingle();
+    myProfile = data || null;
+  }catch(e){ myProfile = null; }
+  isAdminUser = !!(myProfile && myProfile.role==='admin');
+  if(isAdminUser) adminSelf = { id: currentUser.id, email: currentUser.email };
+}
+async function checkMySupportAccess(){
+  try{
+    const {data} = await sb.from('support_access').select('*').eq('customer_id',currentUser.id).gt('expires_at', new Date().toISOString()).order('expires_at',{ascending:false}).limit(1).maybeSingle();
+    return data || null;
+  }catch(e){ return null; }
+}
+async function adminViewCustomer(customerId, customerEmail){
+  if(!isAdminUser) return;
+  try{
+    await initCloudStorage({ id:customerId, email:customerEmail });
+    viewingAsCustomer = { id:customerId, email:customerEmail };
+    closeSheet();
+    await loadData();
+    showToast('Now viewing '+customerEmail);
+  }catch(e){ showToast('Could not load that account — check they granted support access.'); }
+}
+async function adminExitCustomerView(){
+  if(!adminSelf) return;
+  await initCloudStorage(adminSelf);
+  viewingAsCustomer = null;
+  await loadData();
+  showToast('Back to your own account');
+}
+
 const RABBITS_KEY = 'rabbits_v2';
 const PLANNED_KEY = 'planned_v1';
 const EVENTS_KEY = 'events_v1';
+const SHOWS_KEY = 'shows_v1';
 const THEME_KEY = 'theme_v1';
-let rabbits = [], planned = [], customEvents = [], currentTab = 'home', searchQuery = '', doesFilter = 'all', rabbitsGroup = 'does';
+let rabbits = [], planned = [], customEvents = [], shows = [], currentTab = 'home', searchQuery = '', doesFilter = 'all', rabbitsGroup = 'does';
 let profileRabbitId = null, profileTab = 'overview', photoActiveCategory = 'Primary';
 let expandedLitters = new Set();
 let calWeekStart = null, calSelectedDate = null;
@@ -644,8 +729,9 @@ async function loadData(){
   enrichFromRoster();
   try{ planned = JSON.parse((await window.storage.get(PLANNED_KEY,false)).value); }catch(e){ planned=[]; }
   try{ customEvents = JSON.parse((await window.storage.get(EVENTS_KEY,false)).value); }catch(e){ customEvents=[]; }
+  try{ shows = JSON.parse((await window.storage.get(SHOWS_KEY,false)).value); }catch(e){ shows=[]; }
   seedDemoExtras();
-  await saveData(); await savePlanned(); await saveEvents();
+  await saveData(); await savePlanned(); await saveEvents(); await saveShows();
   try{ const t=(await window.storage.get(THEME_KEY,false)).value; if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); }catch(e){}
   render();
 }
@@ -656,7 +742,7 @@ async function saveData(){
     return true;
   }catch(e){
     console.error(e);
-    showSaveError("Your last change didn't save. This usually means a connection hiccup or a temporary issue reaching your Barn Board account — check your internet connection and try again. Nothing new will save until this is resolved.");
+    showSaveError("Your last change didn't save. This usually means a connection hiccup or a temporary issue reaching your HerdNerd Pro account — check your internet connection and try again. Nothing new will save until this is resolved.");
     return false;
   }
 }
@@ -671,6 +757,7 @@ function hideSaveError(){
 }
 async function savePlanned(){ try{ await window.storage.set(PLANNED_KEY, JSON.stringify(planned), false); }catch(e){ console.error(e); } }
 async function saveEvents(){ try{ await window.storage.set(EVENTS_KEY, JSON.stringify(customEvents), false); }catch(e){ console.error(e); } }
+async function saveShows(){ try{ await window.storage.set(SHOWS_KEY, JSON.stringify(shows), false); }catch(e){ console.error(e); } }
 function showToast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2000); }
 
 document.getElementById('themeBtn').onclick = async ()=>{
@@ -785,7 +872,15 @@ function autoGraduateJuniors(){
 }
 function render(){
   autoGraduateJuniors();
-  document.getElementById('quickBredBtn').style.display = (currentTab==='home'||(currentTab==='rabbits'&&rabbitsGroup==='does')) ? '' : 'none';
+  document.getElementById('quickBredBtn').style.display = (currentTab==='rabbits'&&rabbitsGroup==='does') ? '' : 'none';
+  const banner = document.getElementById('adminViewBanner');
+  if(viewingAsCustomer){
+    banner.style.display = 'flex';
+    banner.innerHTML = `<span>Viewing ${esc(viewingAsCustomer.email)}'s account — edits are logged</span><button id="exitAdminViewBtn">Back to my account</button>`;
+    document.getElementById('exitAdminViewBtn').onclick = adminExitCustomerView;
+  } else {
+    banner.style.display = 'none';
+  }
   renderNav(); renderMain();
 }
 
@@ -980,99 +1075,202 @@ function renderMain(){
   attachCardEvents();
 }
 
+function snoozed(r,type){ return !!(r.attnSnooze && r.attnSnooze[type] && r.attnSnooze[type] > todayStr()); }
+function showUndoToast(label, revertFn){
+  const t = document.getElementById('toast');
+  clearTimeout(window._toastTimer);
+  t.innerHTML = `${esc(label)} <button id="toastUndo" style="margin-left:10px; background:none; border:none; color:var(--gold-light); font-weight:600; text-decoration:underline; cursor:pointer;">Undo</button>`;
+  t.classList.add('on');
+  window._toastTimer = setTimeout(()=>t.classList.remove('on'), 4000);
+  document.getElementById('toastUndo').onclick = ()=>{ revertFn(); saveData(); render(); t.classList.remove('on'); };
+}
+const QA_PLUS_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`;
+const QA_BUNNY_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10c-1-3 0-6 1.5-6S11 7 11 10"/><path d="M16 10c1-3 0-6-1.5-6S13 7 13 10"/><ellipse cx="12" cy="15" rx="6" ry="5.5"/><circle cx="9.7" cy="14" r=".6" fill="currentColor" stroke="none"/><circle cx="14.3" cy="14" r=".6" fill="currentColor" stroke="none"/></svg>`;
+const QA_TAG_SVG = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 12.5 12 21l-9-9V4h8z"/><circle cx="7.5" cy="8.5" r="1.2" fill="currentColor" stroke="none"/></svg>`;
+const CLOCK_SVG = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>`;
+const CHEVRON_SVG = `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>`;
+function attnRowHTML({ urgent=false, text, sub='', buttons='', circleId=null, circleType='', circleLabel='', snoozeId=null, snoozeType='' }){
+  const circle = circleId ? `<div class="todo-circle ${urgent?'overdue':''}" data-circledone="${circleId}" data-circletype="${circleType}" data-circlelabel="${esc(circleLabel)}"></div>` : '';
+  const clock = snoozeId ? `<button class="todo-clock" data-snooze="${snoozeId}" data-snoozetype="${snoozeType}" aria-label="Snooze">${CLOCK_SVG}</button>` : '';
+  return `<div class="todo-row ${urgent?'overdue':''}">
+    ${circle}
+    <div class="todo-text" style="flex:1;">${text}${sub?`<div class="todo-sub-text">${sub}</div>`:''}</div>
+    <div style="display:flex; gap:6px; flex-shrink:0; align-items:center; flex-wrap:wrap; justify-content:flex-end;">${buttons}${clock}</div>
+  </div>`;
+}
+function nestGroupHTML(nest){
+  return `<div class="todo-row" data-nesttoggle="1" style="cursor:pointer;">
+    <div class="todo-text" style="flex:1;"><b>Add nest box</b> — ${nest.length} doe${nest.length===1?'':'s'}
+      <div class="todo-sub-text">Due to kindle within 3 days</div></div>
+    <button class="todo-chevron" data-nesttoggle="1" aria-label="Expand">${CHEVRON_SVG}</button>
+  </div>
+  <div class="todo-sub" id="nestGroupBody" style="display:none;">
+    ${nest.map(r=>{
+      const d=daysToDue(r);
+      const when = d===0 ? 'due today' : `due in ${d} day${d===1?'':'s'}`;
+      return attnRowHTML({ text:`<b>${esc(r.name)}</b> — ${when}`, circleId:r.id, circleType:'nest', circleLabel:`${r.name}'s nest box marked done`, snoozeId:r.id, snoozeType:'nest' });
+    }).join('')}
+  </div>`;
+}
+function wireAttentionRows(root){
+  root.querySelectorAll('[data-nesttoggle]').forEach(b=>b.onclick=()=>{ const body=root.querySelector('#nestGroupBody'); if(body) body.style.display = body.style.display==='none'?'block':'none'; });
+  root.querySelectorAll('[data-circledone]').forEach(el=>el.onclick=()=>{
+    const id=el.dataset.circledone, type=el.dataset.circletype, label=el.dataset.circlelabel;
+    const r=rabbits.find(x=>x.id===id); if(!r) return;
+    let prevVal;
+    if(type==='nest'){ prevVal=r.nestBoxAckDate; r.nestBoxAckDate=todayStr(); }
+    else if(type==='graduate'){ prevVal=r.juniorAckDone; r.juniorAckDone=true; }
+    else if(type==='pickup'){ prevVal=r.sale?r.sale.pickupAckDate:null; if(r.sale) r.sale.pickupAckDate=todayStr(); }
+    el.closest('.todo-row').classList.add('todo-complete');
+    saveData();
+    setTimeout(()=>{
+      render();
+      showUndoToast(label, ()=>{
+        const rr=rabbits.find(x=>x.id===id); if(!rr) return;
+        if(type==='nest') rr.nestBoxAckDate=prevVal;
+        else if(type==='graduate') rr.juniorAckDone=prevVal;
+        else if(type==='pickup' && rr.sale) rr.sale.pickupAckDate=prevVal;
+      });
+    }, 380);
+  });
+  root.querySelectorAll('[data-snooze]').forEach(el=>el.onclick=()=>{
+    const id=el.dataset.snooze, type=el.dataset.snoozetype;
+    const r=rabbits.find(x=>x.id===id); if(!r) return;
+    r.attnSnooze = r.attnSnooze || {};
+    r.attnSnooze[type] = addDays(todayStr(),1);
+    saveData(); render(); showToast('Snoozed until tomorrow');
+  });
+}
+function openAttentionSheet(rowsHtml){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Needs attention</h2>${rowsHtml}`);
+  const sheetEl = document.getElementById('sheet');
+  wireAttentionRows(sheetEl);
+  wireConvertButtons(sheetEl);
+  attachCardEvents();
+}
+function wireConvertButtons(root){
+  root.querySelectorAll('[data-convertyes]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertyes); if(r) convertLitterToIndividuals(r.id); });
+  root.querySelectorAll('[data-convertno]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertno); if(r){ r.litterConvertAckDate=todayStr(); saveData(); render(); } });
+}
+function comingUpRowHTML(e){ return `<div class="comingup-row"><span>${esc(e.label)}</span><span class="comingup-date">${fmtDate(e.date).replace(/, \d{4}$/,'')}</span></div>`; }
+
 function renderHome(main){
   const t = todayStr();
-  const activeRabbits = rabbits.filter(r=>isActive(r)&&r.status!=='external');
-  const allDoesH = activeRabbits.filter(r=>r.sex==='doe'&&r.status!=='growing');
-  const doesCount = allDoesH.length;
-  const bucksCount = activeRabbits.filter(r=>r.sex==='buck'&&r.status!=='growing').length;
-  const juniorsCount = activeRabbits.filter(r=>r.status==='growing').length;
-  const nest = rabbits.filter(r=>r.sex==='doe'&&needsNestBox(r)&&r.nestBoxAckDate!==t).sort((a,b)=>daysToDue(a)-daysToDue(b));
-  const overdueDoes = rabbits.filter(r=>r.sex==='doe'&&isOverdue(r)).sort((a,b)=>daysToDue(a)-daysToDue(b));
-  const convert = rabbits.filter(r=>r.sex==='doe'&&r.status==='nursing'&&r.sellDate&&r.sellDate<=t&&r.litterConvertAckDate!==t&&(r.litterKits||[]).some(k=>!k.individualId));
-  const reb = rabbits.filter(r=>r.sex==='doe'&&isRebreedReady(r));
-  const recentGraduates = rabbits.filter(r=>r.graduatedDate && !r.juniorAckDone && daysBetween(r.graduatedDate,t)<=14).sort((a,b)=>a.graduatedDate.localeCompare(b.graduatedDate));
   const nursingDoes = rabbits.filter(r=>r.sex==='doe'&&r.status==='nursing');
-  const allKits = nursingDoes.flatMap(d=>d.litterKits||[]);
-  const liveKits = allKits.length, liveBucks = allKits.filter(k=>k.sex==='buck').length, liveDoes = allKits.filter(k=>k.sex==='doe').length;
-  const approachingLitters = nursingDoes.filter(d=>{ const dLeft=daysBetween(t,d.sellDate); return dLeft>=0 && dLeft<=14; })
-    .sort((a,b)=>daysBetween(t,a.sellDate)-daysBetween(t,b.sellDate));
-  const forSaleRabbits = rabbits.filter(r=>r.forSale && r.status!=='sold' && !isArchived(r) && r.status!=='external').length;
-  const forSaleKits = allKits.filter(k=>k.forSale && !k.individualId).length;
-  const archiveCount = rabbits.filter(isArchived).length;
 
-  const attnTotal = nest.length + overdueDoes.length + convert.length + reb.length + recentGraduates.length;
+  const nest = rabbits.filter(r=>r.sex==='doe'&&needsNestBox(r)&&r.nestBoxAckDate!==t&&!snoozed(r,'nest')).sort((a,b)=>daysToDue(a)-daysToDue(b));
+  const overdueDoes = rabbits.filter(r=>r.sex==='doe'&&isOverdue(r)&&!snoozed(r,'overdue')).sort((a,b)=>daysToDue(a)-daysToDue(b));
+  const pickupOverdue = rabbits.filter(r=>r.sale&&r.sale.pickupDate&&r.sale.pickupDate<t&&!r.sale.pickupAckDate&&!snoozed(r,'pickup'));
+  const convert = rabbits.filter(r=>r.sex==='doe'&&r.status==='nursing'&&r.sellDate&&r.sellDate<=t&&r.litterConvertAckDate!==t&&(r.litterKits||[]).some(k=>!k.individualId)&&!snoozed(r,'convert'));
+  const reb = rabbits.filter(r=>r.sex==='doe'&&isRebreedReady(r)&&!snoozed(r,'reb'));
+  const recentGraduates = rabbits.filter(r=>r.graduatedDate && !r.juniorAckDone && daysBetween(r.graduatedDate,t)<=14 && !snoozed(r,'graduate')).sort((a,b)=>a.graduatedDate.localeCompare(b.graduatedDate));
 
-  let h = `<div class="section-label" style="display:flex; align-items:center; justify-content:space-between; margin-top:0;">
+  // Build attention rows — nest box prep collapses into one group row; everything else is one row per rabbit.
+  const rows = [];
+  if(nest.length) rows.push({ urgent:false, sortKey:-1, html: nestGroupHTML(nest) });
+  overdueDoes.forEach(r=>{
+    const d=daysToDue(r);
+    rows.push({ urgent:true, sortKey:d, html: attnRowHTML({
+      urgent:true, text:`<b>${esc(r.name)}</b> is overdue — ${-d} day${-d===1?'':'s'} past due`,
+      buttons:`<button class="btn btn-primary btn-sm" data-act="kindled" data-id="${r.id}">Kindled</button>`,
+      snoozeId:r.id, snoozeType:'overdue'
+    })});
+  });
+  pickupOverdue.forEach(r=>{
+    rows.push({ urgent:true, sortKey:0, html: attnRowHTML({
+      urgent:true, text:`Overdue — pickup: <b>${esc(r.name)}</b>`, sub:`Buyer pickup was scheduled for ${fmtDate(r.sale.pickupDate)}`,
+      circleId:r.id, circleType:'pickup', circleLabel:`${r.name}'s pickup marked complete`,
+      snoozeId:r.id, snoozeType:'pickup'
+    })});
+  });
+  convert.forEach(r=>{
+    rows.push({ urgent:false, sortKey:5, html: attnRowHTML({
+      text:`<b>${esc(r.name)}'s litter</b> is 8 weeks old — make individual pages?`,
+      buttons:`<button class="btn btn-primary btn-sm" data-convertyes="${r.id}">Yes</button><button class="btn btn-secondary btn-sm" data-convertno="${r.id}">Not yet</button>`,
+      snoozeId:r.id, snoozeType:'convert'
+    })});
+  });
+  reb.forEach(r=>{
+    rows.push({ urgent:false, sortKey:6, html: attnRowHTML({
+      text:`<b>${esc(r.name)}</b> is ready to rebreed`,
+      buttons:`<button class="btn btn-primary btn-sm" data-act="rebred" data-id="${r.id}">Rebred</button>`,
+      snoozeId:r.id, snoozeType:'reb'
+    })});
+  });
+  recentGraduates.forEach(r=>{
+    rows.push({ urgent:false, sortKey:7, html: attnRowHTML({
+      text:`<b>${esc(r.name)}</b> turned 6 months — moved to the main roster`,
+      circleId:r.id, circleType:'graduate', circleLabel:`${r.name} acknowledged`,
+      snoozeId:r.id, snoozeType:'graduate'
+    })});
+  });
+  rows.sort((a,b)=> a.urgent===b.urgent ? a.sortKey-b.sortKey : (a.urgent?-1:1));
+  const attnTotal = rows.length;
+  const VISIBLE_CAP = 3;
+  const visibleRows = rows.slice(0,VISIBLE_CAP);
+  const hiddenCount = attnTotal - visibleRows.length;
+
+  // Coming up: bucketed into "This week" (next 7 days) and "Later" (8-30 days).
+  const upcoming = [];
+  rabbits.forEach(r=>{
+    if(r.sex==='doe'&&r.status==='pregnant'&&r.dueDate&&daysToDue(r)>=0) upcoming.push({date:r.dueDate, label:`${r.name} due to kindle`});
+    if(r.sex==='doe'&&r.status==='nursing'){
+      if(r.weanDate&&r.weanDate>=t) upcoming.push({date:r.weanDate, label:`${r.name}'s litter ready to wean`});
+      if(r.sellDate&&r.sellDate>=t) upcoming.push({date:r.sellDate, label:`${r.name}'s litter ready to go`});
+    }
+  });
+  planned.forEach(p=>{ if(p.targetDate>=t) upcoming.push({date:p.targetDate, label:`Planned: ${p.doeName||'?'} × ${p.buckName||'?'}`}); });
+  customEvents.forEach(e=>{ if(e.date>=t) upcoming.push({date:e.date, label:e.title}); });
+  upcoming.sort((a,b)=>a.date.localeCompare(b.date));
+  const thisWeek = upcoming.filter(e=>daysBetween(t,e.date)<=6);
+  const later = upcoming.filter(e=>{ const d=daysBetween(t,e.date); return d>6 && d<=30; });
+
+  const show = nextUpcomingShow();
+
+  let h = `<div class="quick-actions">
+    <button class="qa-btn qa-primary" id="qaAddBreeding"><span class="qa-icon">${QA_PLUS_SVG}</span><span>Add breeding</span></button>
+    <button class="qa-btn" id="qaOpenDoes"><span class="qa-icon">${QA_BUNNY_SVG}</span><span>Open does</span></button>
+    <button class="qa-btn" id="qaForSale"><span class="qa-icon">${QA_TAG_SVG}</span><span>For sale</span></button>
+    <button class="qa-btn" id="qaAddRabbit"><span class="qa-icon">${QA_PLUS_SVG}</span><span>Add rabbit</span></button>
+  </div>`;
+
+  if(show){
+    const daysLeft = daysBetween(t, show.entryDeadline);
+    h += `<div class="show-banner" id="showBannerCard">
+      <div><div class="show-banner-name">${esc(show.name)}</div><div class="show-banner-sub">Entries close ${fmtDate(show.entryDeadline)}</div></div>
+      <div class="show-banner-days"><div class="n">${daysLeft}</div><div class="l">day${daysLeft===1?'':'s'}</div></div>
+    </div>`;
+  }
+
+  h += `<div class="section-label" style="display:flex; align-items:center; justify-content:space-between; margin-top:0;">
     <span>NEEDS ATTENTION</span>
     ${attnTotal ? `<span style="font-size:11px; font-weight:600; color:#fffdf8; background:var(--rust); padding:2px 9px; border-radius:10px;">${attnTotal}</span>` : ''}
   </div>`;
-
   if(!attnTotal){
     h += `<div class="card no-tap"><div class="card-detail">Nothing needs attention right now.</div></div>`;
   } else {
-    overdueDoes.forEach(r=>{
-      const d=daysToDue(r);
-      h += checklistRow(`<b>${esc(r.name)}</b> is overdue — ${-d} day${-d===1?'':'s'} past due`,
-        `<button class="btn btn-primary btn-sm" data-act="kindled" data-id="${r.id}">Kindled</button>`);
-    });
-    nest.forEach(r=>{
-      const d=daysToDue(r);
-      const when = d===0 ? 'due today' : `due in ${d} day${d===1?'':'s'}`;
-      h += checklistRow(`<b>${esc(r.name)}</b> needs a nest box — ${when}`, `<button class="btn btn-primary btn-sm" data-nestdone="${r.id}">Done</button>`);
-    });
-    convert.forEach(r=>{
-      h += checklistRow(`<b>${esc(r.name)}'s litter</b> is 8 weeks old — make individual pages?`,
-        `<button class="btn btn-primary btn-sm" data-convertyes="${r.id}">Yes</button><button class="btn btn-secondary btn-sm" data-convertno="${r.id}">Not yet</button>`);
-    });
-    reb.forEach(r=>{
-      h += checklistRow(`<b>${esc(r.name)}</b> is ready to rebreed`, `<button class="btn btn-primary btn-sm" data-act="rebred" data-id="${r.id}">Rebred</button>`);
-    });
-    recentGraduates.forEach(r=>{
-      h += checklistRow(`<b>${esc(r.name)}</b> turned 6 months — moved to the main roster`, `<button class="btn btn-secondary btn-sm" data-graduateack="${r.id}">Got it</button>`);
-    });
+    h += visibleRows.map(r=>r.html).join('');
+    if(hiddenCount>0) h += `<button class="attn-viewall" id="attnViewAll">View all (${attnTotal}) &rarr;</button>`;
   }
 
-  h += `<div style="height:1px; background:var(--line); margin:14px 0 12px;"></div>`;
-
-  h += `<div class="stats" style="padding:0; margin-bottom:16px;">
-    <div class="stat" data-goprog="does"><div class="n">${doesCount}</div><div class="l">Does</div></div>
-    <div class="stat" data-goprog="bucks"><div class="n">${bucksCount}</div><div class="l">Bucks</div></div>
-    <div class="stat" data-goprog="juniors"><div class="n">${juniorsCount}</div><div class="l">Juniors</div></div>
-  </div>`;
-
-  h += `<button class="btn btn-secondary" style="width:100%; margin-bottom:16px;" id="homeAddRabbitBtn">+ Add a rabbit</button>`;
-
-  h += `<div class="section-label">LITTERS AND UPCOMING</div>
-  <div class="card no-tap">
-    <div class="card-detail">${nursingDoes.length} active litter${nursingDoes.length===1?'':'s'} &middot; ${liveKits} live kit${liveKits===1?'':'s'} (${liveBucks} buck${liveBucks===1?'':'s'}, ${liveDoes} doe${liveDoes===1?'':'s'})</div>
-    ${approachingLitters.length ? approachingLitters.map(d=>{
-      const daysLeft=daysBetween(t,d.sellDate);
-      const sale=(d.litterKits||[]).filter(k=>k.forSale&&!k.individualId).length;
-      return `<div class="card-detail" style="margin-top:6px;">${esc(d.name)}'s litter — 8 weeks ${daysLeft===0?'today':'in '+daysLeft+'d'}${sale?` &middot; ${sale} marked for sale`:''}</div>`;
-    }).join('') : `<div class="card-detail" style="margin-top:6px; opacity:.7;">Nothing coming up in the next 2 weeks.</div>`}
-    <div class="card-actions"><button class="btn btn-secondary btn-sm" data-goprog="litters">View Litters</button></div>
-  </div>`;
-
-  h += `<div class="section-label">MORE</div>
-  <div class="stats" style="padding:0;">
-    <div class="stat" data-goprog="planned"><div class="n">${planned.length}</div><div class="l">Planned</div></div>
-    <div class="stat" data-goprog="forsale"><div class="n">${forSaleRabbits+forSaleKits}</div><div class="l">For sale</div></div>
-    <div class="stat" data-goprog="archive"><div class="n">${archiveCount}</div><div class="l">Archive</div></div>
-  </div>`;
+  h += `<div class="section-label">COMING UP</div>`;
+  if(!thisWeek.length && !later.length){
+    h += `<div class="card no-tap"><div class="card-detail">Nothing coming up in the next month.</div></div>`;
+  } else {
+    if(thisWeek.length) h += `<div class="section-label" style="margin-top:10px; opacity:.6;">THIS WEEK</div><div class="card no-tap">${thisWeek.map(comingUpRowHTML).join('')}</div>`;
+    if(later.length) h += `<div class="section-label" style="margin-top:10px; opacity:.6;">LATER</div><div class="card no-tap">${later.map(comingUpRowHTML).join('')}</div>`;
+  }
 
   main.innerHTML = h;
-  document.getElementById('homeAddRabbitBtn').onclick = openAddSheet;
-  document.querySelectorAll('[data-nestdone]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.nestdone); if(r){ r.nestBoxAckDate=todayStr(); saveData(); render(); } });
-  document.querySelectorAll('[data-convertyes]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertyes); if(r) convertLitterToIndividuals(r.id); });
-  document.querySelectorAll('[data-convertno]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertno); if(r){ r.litterConvertAckDate=todayStr(); saveData(); render(); } });
-  document.querySelectorAll('[data-graduateack]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.graduateack); if(r){ r.juniorAckDone=true; saveData(); render(); } });
-  document.querySelectorAll('[data-goprog]').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.goprog;
-    if(k==='does'||k==='bucks'||k==='juniors'){ currentTab='rabbits'; rabbitsGroup=k; }
-    else currentTab=k;
-    render(); window.scrollTo(0,0);
-  });
+
+  document.getElementById('qaAddBreeding').onclick = ()=>openAddPlannedSheet();
+  document.getElementById('qaOpenDoes').onclick = ()=>{ currentTab='rabbits'; rabbitsGroup='does'; render(); window.scrollTo(0,0); };
+  document.getElementById('qaForSale').onclick = ()=>{ currentTab='forsale'; render(); window.scrollTo(0,0); };
+  document.getElementById('qaAddRabbit').onclick = openAddSheet;
+  if(document.getElementById('showBannerCard')) document.getElementById('showBannerCard').onclick = openShowsSheet;
+  if(document.getElementById('attnViewAll')) document.getElementById('attnViewAll').onclick = ()=>openAttentionSheet(rows.map(r=>r.html).join(''));
+  wireAttentionRows(main);
+  wireConvertButtons(main);
   attachCardEvents();
 }
 
@@ -1467,7 +1665,7 @@ function commitBreed(r, buck, bred, onDone){
 function openQuickBreedSheet(){
   const open = rabbits.filter(r=>r.sex==='doe'&&(r.status==='open'||r.status==='resting'));
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
-    <h2>Mark a doe bred</h2>
+    <h2>Record a breeding</h2>
     <div class="field"><label>Which doe</label><select id="f-whichdoe"><option value="">Select a doe</option>${open.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></div>
     ${!open.length?'<div class="empty" style="padding:12px 0;">No does are currently open.</div>':''}
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-next">Next</button></div>`);
@@ -2067,6 +2265,31 @@ const PEDIGREE_FIELD_MAP = {
   GGDAM4_NAME: 'f75_354_375', GGDAM4_EAR: 'f74_264_285', GGDAM4_WEIGHT: 'f76_390_411',
   GGDAM4_COLOR: 'f77_491_505', GGDAM4_LEGS: 'f78_206_227',
 };
+// A different custom template layout (landscape, decorative box
+// design) with its own field names — mapped by reading the PDF's
+// actual form field positions rather than assuming a naming scheme.
+const TONYS_HOLLANDS_FIELD_MAP = {
+  BREED:'f1', DATE_OF_BIRTH:'f2', SEX:'f3',
+  G1_NAME:'f32', G1_EAR:'f35', G1_WEIGHT:'f40', G1_COLOR:'f42', G1_LEGS:'f47',
+  SIRE_NAME:'f18', SIRE_EAR:'f20', SIRE_WEIGHT:'f23', SIRE_COLOR:'f27', SIRE_LEGS:'f31',
+  DAM_NAME:'f48', DAM_EAR:'f53', DAM_WEIGHT:'f55', DAM_COLOR:'f59', DAM_LEGS:'f62',
+  PGS_NAME:'f8', PGS_EAR:'f10', PGS_WEIGHT:'f11', PGS_COLOR:'f14', PGS_LEGS:'f17',
+  PGD_NAME:'f24', PGD_EAR:'f28', PGD_WEIGHT:'f30', PGD_COLOR:'f33', PGD_LEGS:'f37',
+  MGS_NAME:'f43', MGS_EAR:'f46', MGS_WEIGHT:'f51', MGS_COLOR:'f54', MGS_LEGS:'f56',
+  MGD_NAME:'f64', MGD_EAR:'f65', MGD_WEIGHT:'f68', MGD_COLOR:'f71', MGD_LEGS:'f73',
+  GGSIRE1_NAME:'f5', GGSIRE1_EAR:'f4', GGSIRE1_WEIGHT:'f7', GGSIRE1_COLOR:'f6', GGSIRE1_LEGS:'f9',
+  GGDAM1_NAME:'f13', GGDAM1_EAR:'f12', GGDAM1_WEIGHT:'f15', GGDAM1_COLOR:'f16', GGDAM1_LEGS:'f19',
+  GGSIRE2_NAME:'f22', GGSIRE2_EAR:'f21', GGSIRE2_WEIGHT:'f26', GGSIRE2_COLOR:'f25', GGSIRE2_LEGS:'f29',
+  GGDAM2_NAME:'f36', GGDAM2_EAR:'f34', GGDAM2_WEIGHT:'f38', GGDAM2_COLOR:'f39', GGDAM2_LEGS:'f41',
+  GGSIRE3_NAME:'f45', GGSIRE3_EAR:'f44', GGSIRE3_WEIGHT:'f49', GGSIRE3_COLOR:'f50', GGSIRE3_LEGS:'f52',
+  GGDAM3_NAME:'f58', GGDAM3_EAR:'f57', GGDAM3_WEIGHT:'f61', GGDAM3_COLOR:'f60', GGDAM3_LEGS:'f63',
+  GGSIRE4_NAME:'f67', GGSIRE4_EAR:'f66', GGSIRE4_WEIGHT:'f69', GGSIRE4_COLOR:'f70', GGSIRE4_LEGS:'f72',
+  GGDAM4_NAME:'f75', GGDAM4_EAR:'f74', GGDAM4_WEIGHT:'f76', GGDAM4_COLOR:'f77', GGDAM4_LEGS:'f78',
+};
+// Add an entry here any time a genuinely different layout needs mapping.
+// Existing/default-shaped templates need nothing added — they just work.
+const PEDIGREE_FIELD_MAPS = { 'tonys-hollands': TONYS_HOLLANDS_FIELD_MAP };
+function fieldMapForTemplate(name){ return PEDIGREE_FIELD_MAPS[name] || PEDIGREE_FIELD_MAP; }
 function fillAncestorBoxValues(prefix, anc, put){
   if(!anc) return;
   put(`${prefix}_NAME`, anc.name);
@@ -2121,21 +2344,39 @@ function buildOfficialPedigreeValues(r){
   fillAncestorBoxValues('GGDAM4', g('ddd'), put);
   return v;
 }
+async function getMyPedigreeTemplateName(){
+  try{
+    const {data} = await sb.from('profiles').select('pedigree_template').eq('id',currentUser.id).maybeSingle();
+    return (data && data.pedigree_template) || 'generic';
+  }catch(e){ return 'generic'; }
+}
 async function downloadOfficialPedigreePDF(r){
   try{
     const { PDFDocument, StandardFonts } = PDFLib;
-    const existingBytes = await fetch('pedigree-template.pdf').then(res=>{
-      if(!res.ok) throw new Error('Template PDF not found: '+res.status);
-      return res.arrayBuffer();
-    });
+    const templateName = await getMyPedigreeTemplateName();
+    const storageUrl = `${SUPABASE_URL}/storage/v1/object/public/pedigree-templates/${templateName}.pdf`;
+    let existingBytes;
+    try{
+      const res = await fetch(storageUrl);
+      if(!res.ok) throw new Error('not found in storage');
+      existingBytes = await res.arrayBuffer();
+    }catch(storageErr){
+      // Fall back to the file bundled with the app so an export never
+      // fails outright just because a template name isn't set up yet.
+      existingBytes = await fetch('pedigree-template.pdf').then(res=>{
+        if(!res.ok) throw new Error('Template PDF not found: '+res.status);
+        return res.arrayBuffer();
+      });
+    }
     const pdfDoc = await PDFDocument.load(existingBytes);
     const form = pdfDoc.getForm();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const values = buildOfficialPedigreeValues(r);
+    const fieldMap = fieldMapForTemplate(templateName);
 
     const MAX_SIZE = 11, MIN_SIZE = 6, H_PADDING = 8; // points
     Object.entries(values).forEach(([role, value])=>{
-      const fieldId = PEDIGREE_FIELD_MAP[role];
+      const fieldId = fieldMap[role];
       if(!fieldId) return;
       try{
         const field = form.getTextField(fieldId);
@@ -2228,20 +2469,137 @@ function openAddPlannedSheet(presetDoeId){
   };
 }
 
-function openMoreSheet(){
-  const items=[['add','Add rabbit'],['import','Import from CSV'],['planned','Planned breedings'],['forsale','For sale'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
+function nextUpcomingShow(){
+  const t = todayStr();
+  return shows.filter(s=>s.entryDeadline>=t).sort((a,b)=>a.entryDeadline.localeCompare(b.entryDeadline))[0] || null;
+}
+function openShowsSheet(){
+  const sorted = [...shows].sort((a,b)=>a.entryDeadline.localeCompare(b.entryDeadline));
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Upcoming shows</h2>
+    <div class="card-sub" style="margin-bottom:12px;">The nearest show with entries still open shows as a countdown banner on Home.</div>
+    <button class="btn btn-primary" style="width:100%; margin-bottom:14px;" id="addShowBtn">+ Add a show</button>
+    ${sorted.length ? sorted.map(s=>`
+      <div class="card no-tap">
+        <div class="card-top"><div><div class="card-name">${esc(s.name)}</div>
+        <div class="card-sub">Entries close ${fmtDate(s.entryDeadline)}${s.showDate?' &middot; show '+fmtDate(s.showDate):''}</div></div></div>
+        <div class="card-actions"><button class="btn btn-danger btn-sm" data-delshow="${s.id}">Remove</button></div>
+      </div>`).join('') : `<div class="card no-tap"><div class="card-detail">No shows added yet.</div></div>`}`);
+  document.getElementById('addShowBtn').onclick = openAddShowSheet;
+  document.querySelectorAll('[data-delshow]').forEach(b=>b.onclick=()=>{
+    shows = shows.filter(s=>s.id!==b.dataset.delshow); saveShows(); openShowsSheet(); render();
+  });
+}
+function openAddShowSheet(){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Add a show</h2>
+    <div class="field"><label>Show name</label><input type="text" id="f-showname" placeholder="Southern MD ARBA Show"></div>
+    <div class="field"><label>Entry deadline</label><input type="date" id="f-showdeadline" value="${todayStr()}"></div>
+    <div class="field"><label>Show date (optional)</label><input type="date" id="f-showdate"></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="openShowsSheet()">Cancel</button><button class="btn btn-primary" id="f-saveshow">Save show</button></div>`);
+  document.getElementById('f-saveshow').onclick = ()=>{
+    const name = document.getElementById('f-showname').value.trim();
+    const deadline = document.getElementById('f-showdeadline').value;
+    if(!name || !deadline){ showToast('Add a show name and entry deadline'); return; }
+    shows.push({ id:uid(), name, entryDeadline:deadline, showDate:document.getElementById('f-showdate').value||'' });
+    saveShows(); openShowsSheet(); render(); showToast('Show added');
+  };
+}
+async function openAdminSheet(){
+  let profiles=[], grants=[];
+  try{ const {data} = await sb.from('profiles').select('*').order('email'); profiles = data||[]; }catch(e){}
+  try{ const {data} = await sb.from('support_access').select('*').gt('expires_at', new Date().toISOString()); grants = data||[]; }catch(e){}
+  const grantMap = {}; grants.forEach(g=>{ grantMap[g.customer_id]=g; });
+  const others = profiles.filter(p=>p.id!==adminSelf?.id);
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>All accounts</h2>
+    <div class="card-sub" style="margin-bottom:12px;">"View account" only appears once a customer has turned on support access for themselves.</div>
+    ${others.length ? others.map(p=>`
+      <div class="card no-tap">
+        <div class="card-top"><div>
+          <div class="card-name">${esc(p.email||p.id)}</div>
+          <div class="card-sub">${p.role==='admin'?'Admin':'Customer'} &middot; ${p.access_granted?'Access granted':'Access NOT granted'}${grantMap[p.id]?' &middot; support access active':''}</div>
+          <div class="card-sub" style="margin-top:8px;">Pedigree template: <b>${esc(p.pedigree_template||'generic')}</b></div>
+        </div></div>
+        <div class="card-actions">
+          <div class="field" style="flex:1 1 100%; margin-bottom:6px;"><input type="text" data-templateinput="${p.id}" placeholder="filename in Storage, e.g. cjm-legacy" value="${esc(p.pedigree_template||'')}"></div>
+          <button class="btn btn-secondary btn-sm" data-savetemplate="${p.id}">Save template</button>
+          <button class="btn btn-secondary btn-sm" data-toggleaccess="${p.id}" data-current="${p.access_granted}">${p.access_granted?'Revoke access':'Grant access'}</button>
+          <button class="btn btn-secondary btn-sm" data-viewlog="${p.id}" data-email="${esc(p.email||'')}">Activity log</button>
+          ${grantMap[p.id]?`<button class="btn btn-primary btn-sm" data-viewcustomer="${p.id}" data-email="${esc(p.email||'')}">View account</button>`:''}
+        </div>
+      </div>`).join('') : `<div class="card no-tap"><div class="card-detail">No other accounts yet.</div></div>`}`);
+  document.querySelectorAll('[data-toggleaccess]').forEach(b=>b.onclick=async ()=>{
+    const id=b.dataset.toggleaccess, cur=b.dataset.current==='true';
+    await sb.from('profiles').update({access_granted:!cur}).eq('id',id);
+    showToast(!cur?'Access granted':'Access revoked');
+    openAdminSheet();
+  });
+  document.querySelectorAll('[data-savetemplate]').forEach(b=>b.onclick=async ()=>{
+    const id=b.dataset.savetemplate;
+    const input=document.querySelector(`[data-templateinput="${id}"]`);
+    const val=(input.value||'generic').trim();
+    await sb.from('profiles').update({pedigree_template:val}).eq('id',id);
+    showToast('Pedigree template updated'); openAdminSheet();
+  });
+  document.querySelectorAll('[data-viewcustomer]').forEach(b=>b.onclick=()=>adminViewCustomer(b.dataset.viewcustomer, b.dataset.email));
+  document.querySelectorAll('[data-viewlog]').forEach(b=>b.onclick=()=>openAuditLogSheet(b.dataset.viewlog, b.dataset.email));
+}
+function summarizeAuditValue(v){
+  if(v===null || v===undefined) return '(empty)';
+  const s = typeof v==='string' ? v : JSON.stringify(v);
+  return s.length>70 ? s.slice(0,70)+'…' : s;
+}
+async function openAuditLogSheet(customerId, customerEmail){
+  let entries=[];
+  try{
+    const {data} = await sb.from('audit_log').select('*').eq('customer_id',customerId).order('created_at',{ascending:false}).limit(50);
+    entries = data||[];
+  }catch(e){}
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Activity log</h2>
+    <div class="card-sub" style="margin-bottom:12px;">Changes made to ${esc(customerEmail)}'s account while support was viewing it. Most recent first.</div>
+    ${entries.length ? entries.map(e=>`
+      <div class="card no-tap">
+        <div class="card-sub">${new Date(e.created_at).toLocaleString()}</div>
+        <div class="card-detail" style="margin-top:4px;"><b>${esc(e.row_id)}</b> changed</div>
+        <div class="card-detail" style="margin-top:4px; font-size:12px; opacity:.8;">Before: ${esc(summarizeAuditValue(e.old_value))}</div>
+        <div class="card-detail" style="font-size:12px; opacity:.8;">After: ${esc(summarizeAuditValue(e.new_value))}</div>
+      </div>`).join('') : `<div class="card no-tap"><div class="card-detail">No logged edits for this account yet.</div></div>`}
+    <button class="btn btn-secondary" style="width:100%; margin-top:10px;" onclick="openAdminSheet()">Back to all accounts</button>`);
+}
+async function openMoreSheet(){
+  const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
+  const activeGrant = viewingAsCustomer ? null : await checkMySupportAccess();
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
       <div class="section-label" style="margin:0 0 3px;">SIGNED IN AS</div>
       <div style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(currentUser?.email||'')}</div>
     </div>
+    ${isAdminUser ? `<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" id="openAdminBtn">Admin — all accounts</button>` : ''}
+    ${!viewingAsCustomer ? `<div class="card no-tap" style="margin-bottom:12px;">
+      <div class="card-name">Support access</div>
+      <div class="card-sub" style="margin:4px 0 10px;">${activeGrant ? `Support can view and edit your account until ${new Date(activeGrant.expires_at).toLocaleString()}.` : 'Allow CJM Legacy Rabbitry support to view and edit your account for 48 hours — useful if you need help troubleshooting something.'}</div>
+      ${activeGrant ? `<button class="btn btn-danger btn-sm" id="revokeAccessBtn">Revoke access now</button>` : `<button class="btn btn-secondary btn-sm" id="grantAccessBtn">Allow support access (48h)</button>`}
+    </div>` : ''}
     ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}
     <button class="btn btn-danger" style="width:100%; margin-top:4px;" id="signOutBtn">Sign out</button>`);
+  if(document.getElementById('openAdminBtn')) document.getElementById('openAdminBtn').onclick = openAdminSheet;
+  if(document.getElementById('grantAccessBtn')) document.getElementById('grantAccessBtn').onclick = async ()=>{
+    await sb.from('support_access').insert({ customer_id: currentUser.id, expires_at: new Date(Date.now()+48*3600*1000).toISOString(), reason: 'Customer-granted support access' });
+    showToast('Support access granted for 48 hours'); openMoreSheet();
+  };
+  if(document.getElementById('revokeAccessBtn')) document.getElementById('revokeAccessBtn').onclick = async ()=>{
+    await sb.from('support_access').delete().eq('customer_id', currentUser.id).gt('expires_at', new Date().toISOString());
+    showToast('Support access revoked'); openMoreSheet();
+  };
   document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.more;
     if(k==='add') openAddSheet();
     else if(k==='merge') openMergeSheet();
     else if(k==='import') openImportCsvSheet();
+    else if(k==='importpdf') openImportPedigreePdfSheet();
+    else if(k==='shows') openShowsSheet();
     else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
   });
   document.getElementById('signOutBtn').onclick = async ()=>{
@@ -2869,6 +3227,12 @@ function renderCsvPreview(){
 }
 async function commitCsvImport(){
   let imported=0, updated=0, skipped=0;
+  // Two passes, deliberately: if pass 1 also linked sire/dam as it went,
+  // an ancestor listed by name in one row (e.g. as a Sire) but given its
+  // own full row later in the same file would get created twice — once
+  // as an empty stub when first referenced, once as its real row. Doing
+  // every row's own create/update first, then linking ancestry only
+  // after all rows exist, makes the row order in the CSV irrelevant.
   csvImportRows.forEach(row=>{
     if(row.existing && row.action==='skip'){ skipped++; return; }
     if(row.existing && row.action==='update'){
@@ -2879,6 +3243,9 @@ async function commitCsvImport(){
       rabbits.push(blankRabbit(row.data));
       imported++;
     }
+  });
+  csvImportRows.forEach(row=>{
+    if(row.existing && row.action==='skip') return;
     if(row.data.sireName) ensureAncestor(row.data.sireName,'buck');
     if(row.data.damName) ensureAncestor(row.data.damName,'doe');
   });
@@ -2891,6 +3258,310 @@ async function commitCsvImport(){
     showSaveError(`The import ran, but ${imported+updated} record${imported+updated===1?'':'s'} couldn't be saved to your account. Check your internet connection and try the import again.`);
   }
   csvImportRows = [];
+}
+
+/* ============================================================
+   PEDIGREE PDF IMPORT — reads a 4-generation pedigree exported
+   from "Rabbit Register" (Evans Software), matches the rabbit,
+   its parents, grandparents, and great-grandparents by their
+   fixed positions on the page, and feeds the results into the
+   exact same review-and-commit flow as the CSV importer above
+   (csvImportRows / renderCsvPreview / commitCsvImport) — so
+   duplicate handling, the two-pass ancestor linking, and the
+   review UI are all identical and already tested.
+   ============================================================ */
+// Box positions are fixed for this template on landscape Letter
+// (792x612pt) — verified against the software's own drawn borders.
+const PEDIGREE_PDF_BOXES = [
+  ['SELF', 30, 271, 202, 353],
+  ['SIRE', 216, 138, 387, 209],
+  ['DAM', 216, 414, 387, 485],
+  ['PGS', 402, 70, 573, 140],
+  ['PGD', 402, 207, 573, 278],
+  ['MGS', 402, 346, 573, 416],
+  ['MGD', 402, 483, 573, 554],
+  ['GGSIRE1', 588, 39, 760, 102],
+  ['GGDAM1', 588, 108, 760, 171],
+  ['GGSIRE2', 588, 177, 760, 240],
+  ['GGDAM2', 588, 246, 760, 309],
+  ['GGSIRE3', 588, 315, 760, 378],
+  ['GGDAM3', 588, 384, 760, 447],
+  ['GGSIRE4', 588, 453, 760, 516],
+  ['GGDAM4', 588, 521, 760, 585],
+];
+const PEDIGREE_MALE_ROLES = new Set(['SIRE','PGS','MGS','GGSIRE1','GGSIRE2','GGSIRE3','GGSIRE4']);
+const PEDIGREE_PARENT_OF = {
+  SELF: ['SIRE','DAM'], SIRE: ['PGS','PGD'], DAM: ['MGS','MGD'],
+  PGS: ['GGSIRE1','GGDAM1'], PGD: ['GGSIRE2','GGDAM2'],
+  MGS: ['GGSIRE3','GGDAM3'], MGD: ['GGSIRE4','GGDAM4'],
+};
+function pdfLinesFromItems(items){
+  const lines = [];
+  const sorted = items.slice().sort((a,b)=>a.top-b.top||a.x-b.x);
+  for(const it of sorted){
+    if(!it.str.trim()) continue;
+    let line = lines.find(l=>Math.abs(l.top-it.top)<3);
+    if(!line){ line={top:it.top, parts:[]}; lines.push(line); }
+    line.parts.push(it);
+  }
+  lines.sort((a,b)=>a.top-b.top);
+  return lines.map(l=>l.parts.sort((a,b)=>a.x-b.x).map(p=>p.str).join(' ').replace(/\s+/g,' ').trim());
+}
+function pdfParseWeight(s){
+  if(!s) return '';
+  const m = s.match(/(\d+)\s*#(?:\s*(\d+)\s*oz)?/);
+  if(!m) return '';
+  const lbs = parseInt(m[1],10) + (m[2]?parseInt(m[2],10)/16:0);
+  return (Math.round(lbs*100)/100).toString();
+}
+function pdfParseDob(s){
+  if(!s) return null;
+  const m = s.match(/([A-Za-z]+)\s+(\d{1,2}),\s+(\d{4})/);
+  if(!m) return null;
+  const d = new Date(`${m[1]} ${m[2]}, ${m[3]}`);
+  if(isNaN(d)) return null;
+  return d.toISOString().slice(0,10);
+}
+function pdfParseBoxLines(lines, role){
+  if(!lines.length) return null;
+  const data = { name: lines[0], color:'', earNumber:'', registrationNumber:'', weight:'', legsWins:'', dob:null, gc:'', sex:null };
+  for(const line of lines.slice(1)){
+    let m;
+    if((m=line.match(/Ear\s*#:\s*(\S*)\s*Reg\s*#:\s*(\S*)/i))){ data.earNumber=m[1]||''; data.registrationNumber=m[2]||''; continue; }
+    if((m=line.match(/Weight:\s*(.+)/i))){ data.weight=pdfParseWeight(m[1]); continue; }
+    if((m=line.match(/GC\s*#:\s*(\S*)\s*Legs:\s*(\d*)/i))){ data.gc=m[1]||''; data.legsWins=m[2]||''; continue; }
+    if((m=line.match(/DOB:\s*(.+)/i))){ data.dob=pdfParseDob(m[1]); continue; }
+    if((m=line.match(/Sex:\s*(Buck|Doe)/i))){ data.sex = m[1].toLowerCase()==='buck'?'buck':'doe'; continue; }
+    if(!data.color && !/^(BOS|BOB|BOV|BIS|Placed|\d)/.test(line)){ data.color=line; continue; }
+    // otherwise: a show-win line — not imported
+  }
+  if(role!=='SELF') data.sex = PEDIGREE_MALE_ROLES.has(role) ? 'buck' : 'doe';
+  return data;
+}
+// Box positions are fixed for the Everbreed template on landscape
+// Letter (792x612pt) — measured directly from a real Everbreed
+// pedigree export's page geometry.
+const EVERBREED_PDF_BOXES = [
+  ['SELF', 38.6, 265.1, 184.9, 362.6],
+  ['SIRE', 196.1, 169.9, 375.4, 228.4],
+  ['DAM', 196.1, 390.4, 375.4, 448.9],
+  ['PGS', 385.9, 117.4, 565.1, 175.1],
+  ['PGD', 385.9, 223.1, 565.1, 280.9],
+  ['MGS', 385.9, 333.4, 565.1, 391.1],
+  ['MGD', 385.9, 450.4, 565.1, 503.6],
+  ['GGSIRE1', 575.6, 96.4, 754.9, 143.6],
+  ['GGDAM1', 575.6, 148.9, 754.9, 196.9],
+  ['GGSIRE2', 575.6, 202.1, 754.9, 249.4],
+  ['GGDAM2', 575.6, 254.6, 754.9, 301.9],
+  ['GGSIRE3', 575.6, 307.9, 754.9, 359.6],
+  ['GGDAM3', 575.6, 364.9, 754.9, 416.6],
+  ['GGSIRE4', 575.6, 421.9, 754.9, 474.4],
+  ['GGDAM4', 575.6, 479.6, 754.9, 531.4],
+];
+// Everbreed draws every box with a colored border — blue for a buck,
+// pink for a doe. For every ancestor slot that color is exactly
+// PEDIGREE_MALE_ROLES (sire-side roles are always the male half of a
+// breeding by definition, generation after generation, so it's
+// reused as-is rather than duplicated). The one box whose sex isn't
+// fixed by tree position is SELF — the featured rabbit could be
+// either — so its sex is instead read straight off the "BUCK"/"DOE"
+// badge printed in that box, which is the text-layer equivalent of
+// reading its border color.
+
+// pdf.js text items include small Font-Awesome glyph icons (paw/
+// gender symbols) as Private-Use-Area characters. They carry no
+// name/field text but their vertical position doesn't line up with
+// the real text baseline, which throws off line-grouping — so they're
+// filtered out before grouping rather than after.
+function pdfIsIconGlyph(s){
+  const t = (s||'').trim();
+  if(!t) return true;
+  for(const ch of t){ const c=ch.codePointAt(0); if(c<0xE000||c>0xF8FF) return false; }
+  return true;
+}
+function pdfDashClean(v){ v=(v||'').trim(); return (!v||v==='-') ? '' : v; }
+
+// Everbreed's box layout isn't fixed: on the big SELF box each label
+// ("ID:", "DOB:", "COLOR:", "BREED:"...) gets its own line, but on the
+// smaller ancestor boxes two labels share a line ("ID: ABU DOB:
+// 03/23/2024"). Rather than pattern-match a specific line shape, every
+// field line in the box is joined into one string and each label's
+// value is sliced out from right after that label up to wherever the
+// next known label starts — so it works the same either way.
+function pdfEverbreedExtractFields(text){
+  const labels = ['ID','DOB','COLOR','BREED','WEIGHT','GC #','GEN'];
+  const positions=[];
+  labels.forEach(label=>{
+    const re = new RegExp('\\b'+label.replace('#','\\#')+'\\s*:','i');
+    const m = text.match(re);
+    if(m) positions.push({label, idx:m.index, len:m[0].length});
+  });
+  positions.sort((a,b)=>a.idx-b.idx);
+  const out={};
+  positions.forEach((p,i)=>{
+    const start=p.idx+p.len;
+    const end = i+1<positions.length?positions[i+1].idx:text.length;
+    out[p.label]=text.slice(start,end).trim();
+  });
+  return out;
+}
+function pdfParseEverbreedBoxLines(lines, role){
+  if(!lines.length) return null;
+  const nameParts=[]; const fieldLines=[]; let sex=null;
+  lines.forEach(line=>{
+    const t=line.trim(); if(!t) return;
+    if(/^(BUCK|DOE)$/i.test(t)){ sex = /^BUCK$/i.test(t)?'buck':'doe'; return; }
+    if(/\b(ID|DOB|COLOR|BREED|WEIGHT|GC\s*#|GEN)\s*:/i.test(t)) fieldLines.push(t);
+    else nameParts.push(t); // cattery prefix and/or given name, in reading order
+  });
+  const f = pdfEverbreedExtractFields(fieldLines.join(' '));
+  const weightRaw = pdfDashClean(f['WEIGHT']);
+  const weightMatch = weightRaw.match(/[\d.]+/); // strips a trailing " lbs"
+  if(!sex) sex = role==='SELF' ? null : (PEDIGREE_MALE_ROLES.has(role) ? 'buck' : 'doe');
+  return {
+    name: nameParts.join(' ').replace(/\s+/g,' ').trim(),
+    color: pdfDashClean(f['COLOR']),
+    breed: pdfDashClean(f['BREED']), // read per-box (mixed-breed pedigrees are possible)
+    earNumber: pdfDashClean(f['ID']),
+    registrationNumber: '', // Everbreed's layout has no separate reg # field
+    weight: weightMatch ? weightMatch[0] : '',
+    legsWins: '', // no leg-count field in this layout
+    dob: csvParseDate(pdfDashClean(f['DOB'])),
+    gc: pdfDashClean(f['GC #']), // Grand Champion # — carried into notes, same as Rabbit Register's GC #
+    sex,
+  };
+}
+function parseEverbreedPedigreePdf(items, viewport){
+  if(Math.abs(viewport.width-792)>15 || Math.abs(viewport.height-612)>15){
+    return { ok:false, error:"This PDF's page size doesn't match the expected Everbreed layout, so the positions couldn't be read reliably." };
+  }
+  const cleanItems = items.filter(it=>!pdfIsIconGlyph(it.str));
+  const slots = {};
+  for(const [role,x0,top,x1,bottom] of EVERBREED_PDF_BOXES){
+    const boxItems = cleanItems.filter(it=>it.x>=x0-2 && it.x<=x1+2 && it.top>=top-2 && it.top<=bottom+2);
+    slots[role] = pdfParseEverbreedBoxLines(pdfLinesFromItems(boxItems), role);
+  }
+  if(!slots.SELF || !slots.SELF.name){
+    return { ok:false, error:"Couldn't find the main rabbit's details on this pedigree — the file may not match the expected Everbreed layout." };
+  }
+  if(!slots.SELF.sex) slots.SELF.sex = 'doe'; // badge text wasn't read — harmless fallback, reviewed before import anyway
+
+  // Same collapse-duplicates + two-pass ancestor linking as the
+  // Rabbit Register parser: a real ancestor can legitimately occupy
+  // more than one tree position (line-breeding), so each unique name
+  // becomes exactly one row.
+  const rows = [];
+  const seen = new Set();
+  for(const [role] of EVERBREED_PDF_BOXES){
+    const data = slots[role];
+    if(!data || !data.name) continue;
+    const key = data.name.trim().toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    const [sireRole, damRole] = PEDIGREE_PARENT_OF[role] || [];
+    const sireData = sireRole ? slots[sireRole] : null;
+    const damData = damRole ? slots[damRole] : null;
+    const rowData = {
+      name: data.name, sex: data.sex, breed: data.breed || '', color: data.color,
+      earNumber: data.earNumber, dob: data.dob, weight: data.weight,
+      legsWins: data.legsWins, registrationNumber: data.registrationNumber,
+      sireName: sireData ? sireData.name : '', damName: damData ? damData.name : '',
+      notes: data.gc ? `GC #: ${data.gc}` : '',
+      status: data.sex==='doe' ? 'open' : 'available',
+    };
+    const existing = findByName(rowData.name);
+    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+  }
+  return { ok:true, rows };
+}
+
+async function parsePedigreePdf(arrayBuffer){
+  if(!window.pdfjsLib) return { ok:false, error:"The PDF reader didn't load — refresh the page and try again." };
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1 });
+  const textContent = await page.getTextContent();
+  const items = textContent.items
+    .map(it => ({ str: it.str, x: it.transform[4], top: viewport.height - it.transform[5] }))
+    .filter(it => it.str.trim());
+
+  const fullText = items.map(i=>i.str).join(' ');
+
+  if(/everbreed/i.test(fullText)){
+    return parseEverbreedPedigreePdf(items, viewport);
+  }
+  if(!/Rabbit Register/i.test(fullText)){
+    return { ok:false, error:"This doesn't look like a supported pedigree PDF — this importer currently understands Rabbit Register (Evans Software) and Everbreed pedigree exports." };
+  }
+  if(Math.abs(viewport.width-792)>15 || Math.abs(viewport.height-612)>15){
+    return { ok:false, error:"This PDF's page size doesn't match the expected Rabbit Register layout, so the positions couldn't be read reliably." };
+  }
+
+  const headerItems = items.filter(it => it.top<65 && it.x<580);
+  const headerLines = pdfLinesFromItems(headerItems);
+  const breedLine = headerLines.find(l=>/Pedigree\s*$/i.test(l));
+  const breed = breedLine ? breedLine.replace(/\s*Pedigree\s*$/i,'').trim() : '';
+
+  const slots = {};
+  for(const [role,x0,top,x1,bottom] of PEDIGREE_PDF_BOXES){
+    const boxItems = items.filter(it=>it.x>=x0-2 && it.x<=x1+2 && it.top>=top-2 && it.top<=bottom+2);
+    slots[role] = pdfParseBoxLines(pdfLinesFromItems(boxItems), role);
+  }
+  if(!slots.SELF || !slots.SELF.name){
+    return { ok:false, error:"Couldn't find the main rabbit's details on this pedigree — the file may not match the expected layout." };
+  }
+
+  // Collapse duplicate individuals — the same real ancestor can
+  // legitimately occupy more than one tree position (line-breeding) —
+  // down to exactly one row each, keeping every role's sire/dam link
+  // pointed at the correct (already-collapsed) name.
+  const rows = [];
+  const seen = new Set();
+  for(const [role] of PEDIGREE_PDF_BOXES){
+    const data = slots[role];
+    if(!data || !data.name) continue;
+    const key = data.name.trim().toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    const [sireRole, damRole] = PEDIGREE_PARENT_OF[role] || [];
+    const sireData = sireRole ? slots[sireRole] : null;
+    const damData = damRole ? slots[damRole] : null;
+    const rowData = {
+      name: data.name, sex: data.sex, breed, color: data.color,
+      earNumber: data.earNumber, dob: data.dob, weight: data.weight,
+      legsWins: data.legsWins, registrationNumber: data.registrationNumber,
+      sireName: sireData ? sireData.name : '', damName: damData ? damData.name : '',
+      notes: data.gc ? `GC #: ${data.gc}` : '',
+      status: data.sex==='doe' ? 'open' : 'available',
+    };
+    const existing = findByName(rowData.name);
+    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+  }
+  return { ok:true, rows, breed };
+}
+function openImportPedigreePdfSheet(){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Import from Pedigree PDF</h2>
+    <div class="card-sub" style="margin-bottom:12px;">Upload a 4-generation pedigree PDF exported from Rabbit Register (Evans Software) or Everbreed — the formats many breeders share when a rabbit changes hands. The rabbit, its parents, grandparents, and great-grandparents are all read automatically and matched up by name, with everything shown to you for review before anything is added.</div>
+    <button class="btn btn-primary" style="width:100%;" id="pdfPickBtn">Choose pedigree PDF</button>
+    <div id="csvPreviewArea"></div>`);
+  document.getElementById('pdfPickBtn').onclick = ()=>document.getElementById('pedigreePdfFileInput').click();
+  document.getElementById('pedigreePdfFileInput').onchange = async (e)=>{
+    const file = e.target.files[0]; e.target.value='';
+    if(!file) return;
+    const area = document.getElementById('csvPreviewArea');
+    area.innerHTML = `<div class="empty">Reading PDF…</div>`;
+    try{
+      const buf = await file.arrayBuffer();
+      const result = await parsePedigreePdf(buf);
+      if(!result.ok){ area.innerHTML = `<div class="dupe-box">${esc(result.error)}</div>`; return; }
+      csvImportRows = result.rows;
+      renderCsvPreview();
+    }catch(err){
+      console.error(err);
+      area.innerHTML = `<div class="dupe-box">Couldn't read that PDF — make sure it's a Rabbit Register or Everbreed pedigree export.</div>`;
+    }
+  };
 }
 
 // Authentication UI
@@ -2930,13 +3601,13 @@ authForm.onsubmit=async (e)=>{
   const password=authPassword.value;
   if(authMode==='signup' && password!==authConfirm.value){ setAuthMessage('Passwords do not match.'); return; }
   authSubmit.disabled=true;
-  setAuthMessage(authMode==='signup'?'Creating your Barn Board account…':'Signing you in…',true);
+  setAuthMessage(authMode==='signup'?'Creating your HerdNerd Pro account…':'Signing you in…',true);
   try{
     if(authMode==='signup'){
       const {data,error}=await sb.auth.signUp({email,password});
       if(error) throw error;
       if(data.session){
-        setAuthMessage('Account created. Loading Barn Board…',true);
+        setAuthMessage('Account created. Loading HerdNerd Pro…',true);
       } else {
         setAuthMessage('Account created. Check your email to confirm your account, then sign in.',true);
         authPassword.value=''; authConfirm.value='';
@@ -2966,6 +3637,14 @@ async function enterApp(user){
   try{
     document.body.classList.add('auth-locked');
     await initCloudStorage(user);
+    await loadMyProfile();
+    if(myProfile && myProfile.access_granted===false){
+      await sb.auth.signOut();
+      currentUser=null; cloudDataReady=false; cloudDataCache={}; myProfile=null; isAdminUser=false; adminSelf=null;
+      authScreen.classList.remove('hidden');
+      setAuthMessage("Your account doesn't have access yet. Contact CJM Legacy Rabbitry to get set up.");
+      return;
+    }
     authScreen.classList.add('hidden');
     document.body.classList.remove('auth-locked');
     await loadData();
@@ -2973,7 +3652,7 @@ async function enterApp(user){
     console.error(err);
     authScreen.classList.remove('hidden');
     document.body.classList.add('auth-locked');
-    setAuthMessage('Could not connect to Barn Board data. '+(err.message||''));
+    setAuthMessage('Could not connect to HerdNerd Pro data. '+(err.message||''));
   }
 }
 
@@ -2982,6 +3661,7 @@ sb.auth.onAuthStateChange((event,session)=>{
     if(event==='INITIAL_SESSION' || event==='SIGNED_IN' || event==='USER_UPDATED') enterApp(session.user);
   } else {
     currentUser=null; cloudDataReady=false; cloudDataCache={};
+    myProfile=null; isAdminUser=false; adminSelf=null; viewingAsCustomer=null;
     authScreen.classList.remove('hidden');
     document.body.classList.add('auth-locked');
     setAuthMode('login');
