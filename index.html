@@ -2248,7 +2248,7 @@ function renderHome(main){
   // Coming up: bucketed into "This week" (next 7 days) and "Later" (8-30 days).
   const upcoming = [];
   rabbits.forEach(r=>{
-    if(r.sex==='doe'&&r.status==='pregnant'&&r.dueDate&&daysToDue(r)>=0) upcoming.push({date:r.dueDate, label:`${r.name} due to kindle`});
+    if(r.sex==='doe'&&r.status==='pregnant'&&r.dueDate&&daysToDue(r)>=0) upcoming.push({date:r.dueDate, label:`${r.name} x ${r.partner||'?'} due`});
     if(r.sex==='doe'&&r.status==='nursing'){
       if(r.weanDate&&r.weanDate>=t) upcoming.push({date:r.weanDate, label:`${r.name}'s litter ready to wean`});
       if(r.sellDate&&r.sellDate>=t) upcoming.push({date:r.sellDate, label:`${r.name}'s litter ready to go`});
@@ -3880,7 +3880,7 @@ function renderBackup(main){
         parseCSV(showsText).forEach(row=>{ shows.push({ id:uid(), name:row.name||'', entryDeadline:row.entryDeadline||todayStr(), showDate:row.showDate||'' }); });
       }
 
-      enrichFromRoster();
+      ensureRabbitFieldDefaults();
       saveData(); savePlanned(); saveEvents(); saveShows();
       currentTab='home'; render(); showToast('Restored from CSV');
     }catch(e){ console.error(e); showToast("Couldn't read that file — check it's a CSV exported from here."); }
@@ -5007,7 +5007,10 @@ async function finishAgreementFlow(){
   await loadData();
 }
 
+let enterAppStarted = false;
 async function enterApp(user){
+  if(enterAppStarted) return;
+  enterAppStarted = true;
   try{
     document.body.classList.add('auth-locked');
     await initCloudStorage(user);
@@ -5032,6 +5035,7 @@ async function enterApp(user){
     authScreen.classList.remove('hidden');
     document.body.classList.add('auth-locked');
     setAuthMessage('Could not connect to HerdNerd Pro data. '+(err.message||''));
+    enterAppStarted = false;
   }
 }
 
@@ -5041,6 +5045,7 @@ sb.auth.onAuthStateChange((event,session)=>{
   } else {
     currentUser=null; cloudDataReady=false; cloudDataCache={};
     myProfile=null; isAdminUser=false; adminSelf=null; viewingAsCustomer=null;
+    enterAppStarted = false;
     authScreen.classList.remove('hidden');
     document.body.classList.add('auth-locked');
     setAuthMode('login');
@@ -5049,6 +5054,8 @@ sb.auth.onAuthStateChange((event,session)=>{
 });
 
 // Ask Supabase for the current session so a returning user goes straight in.
+// (enterApp's own guard above makes this safe to call alongside the
+// onAuthStateChange listener even though both can fire for one login.)
 sb.auth.getSession().then(({data})=>{
   if(data.session) enterApp(data.session.user);
 });
