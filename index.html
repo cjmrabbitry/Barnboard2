@@ -3646,6 +3646,52 @@ async function openAuditLogSheet(customerId, customerEmail){
       </div>`).join('') : `<div class="card no-tap"><div class="card-detail">No logged edits for this account yet.</div></div>`}
     <button class="btn btn-secondary" style="width:100%; margin-top:10px;" onclick="openAdminSheet()">Back to all accounts</button>`);
 }
+async function openMyInfoSheet(){
+  let profile = {};
+  try{
+    const {data} = await sb.from('profiles').select('first_name, last_name, rabbitry_name, phone, website').eq('id',currentUser.id).maybeSingle();
+    profile = data || {};
+  }catch(e){}
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>My info</h2>
+    <div class="card-sub" style="margin-bottom:12px;">This is what's used to auto-fill your pedigree exports and agreements.</div>
+    <div class="field"><label>First name</label><input id="mi-first" value="${esc(profile.first_name||'')}"></div>
+    <div class="field"><label>Last name</label><input id="mi-last" value="${esc(profile.last_name||'')}"></div>
+    <div class="field"><label>Rabbitry name</label><input id="mi-rabbitry" value="${esc(profile.rabbitry_name||'')}"></div>
+    <div class="field"><label>Email</label><input id="mi-email" type="email" value="${esc(currentUser?.email||'')}"></div>
+    <div class="field"><label>Phone number</label><input id="mi-phone" type="tel" value="${esc(profile.phone||'')}"></div>
+    <div class="field"><label>Website (optional)</label><input id="mi-website" value="${esc(profile.website||'')}"></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="mi-save">Save</button></div>
+    <div class="auth-message" id="mi-message"></div>`);
+  document.getElementById('mi-save').onclick = async ()=>{
+    const msg = document.getElementById('mi-message');
+    const saveBtn = document.getElementById('mi-save');
+    saveBtn.disabled = true; msg.textContent = 'Saving…';
+    try{
+      const newEmail = document.getElementById('mi-email').value.trim();
+      const { error } = await sb.from('profiles').update({
+        first_name: document.getElementById('mi-first').value.trim(),
+        last_name: document.getElementById('mi-last').value.trim(),
+        rabbitry_name: document.getElementById('mi-rabbitry').value.trim(),
+        phone: document.getElementById('mi-phone').value.trim(),
+        website: document.getElementById('mi-website').value.trim()
+      }).eq('id',currentUser.id);
+      if(error) throw error;
+      if(newEmail && newEmail !== currentUser.email){
+        const { error: emailErr } = await sb.auth.updateUser({ email:newEmail });
+        if(emailErr) throw emailErr;
+        msg.textContent = 'Saved. Check your new email address to confirm the change.';
+      } else {
+        closeSheet(); showToast('Info updated');
+        return;
+      }
+      saveBtn.disabled = false;
+    }catch(err){
+      msg.textContent = err.message || 'Could not save — try again.';
+      saveBtn.disabled = false;
+    }
+  };
+}
 async function openMoreSheet(){
   const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
   const activeGrant = viewingAsCustomer ? null : await checkMySupportAccess();
@@ -3655,6 +3701,7 @@ async function openMoreSheet(){
       <div style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(currentUser?.email||'')}</div>
     </div>
     ${isAdminUser ? `<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" id="openAdminBtn">Admin — all accounts</button>` : ''}
+    ${!localSandboxMode ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="myInfoBtn">My info</button>` : ''}
     ${(!localSandboxMode && !viewingAsCustomer) ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="practiceModeBtn">Try practice mode (local only)</button>` : ''}
     ${(!viewingAsCustomer && !localSandboxMode) ? `<div class="card no-tap" style="margin-bottom:12px;">
       <div class="card-name">Support access</div>
@@ -3664,6 +3711,7 @@ async function openMoreSheet(){
     ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}
     <button class="btn btn-danger" style="width:100%; margin-top:4px;" id="signOutBtn">Sign out</button>`);
   if(document.getElementById('openAdminBtn')) document.getElementById('openAdminBtn').onclick = openAdminSheet;
+  if(document.getElementById('myInfoBtn')) document.getElementById('myInfoBtn').onclick = openMyInfoSheet;
   if(document.getElementById('practiceModeBtn')) document.getElementById('practiceModeBtn').onclick = enterPracticeMode;
   if(document.getElementById('grantAccessBtn')) document.getElementById('grantAccessBtn').onclick = async ()=>{
     await sb.from('support_access').insert({ customer_id: currentUser.id, expires_at: new Date(Date.now()+48*3600*1000).toISOString(), reason: 'Customer-granted support access' });
