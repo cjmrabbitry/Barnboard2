@@ -4777,7 +4777,7 @@ function pdfWhosDueParseDate(s){
   return csvParseDate(s);
 }
 function pdfWhosDueExtractFields(text){
-  const labels = ['Ear #','Variety','Weight','Legs','Reg #','G.C. #','Born'];
+  const labels = ['Gender','Ear #','Variety','Weight','Legs','Reg #','G.C. #','Born','Breed'];
   const positions=[];
   labels.forEach(label=>{
     const re = new RegExp('\\b'+label.replace('#','\\#')+'\\s*:','i');
@@ -4868,6 +4868,94 @@ function parseWhosDuePedigreePdf(items, viewport){
   return { ok:true, rows, breed };
 }
 
+// A second "Who's Due" export layout — portrait Letter (612x792),
+// with the featured rabbit's own info in a plain text header instead
+// of a boxed SELF section, and only the rabbit's own sire/dam plus
+// grandparents and great-grandparents in boxes (no self box). Boxes
+// use the exact same per-field pattern as the landscape layout, so
+// pdfParseWhosDueBoxLines is reused as-is for them.
+const WHOSDUE2_PDF_BOXES = [
+  ['SIRE', 25, 216, 320, 282],
+  ['DAM', 25, 512, 320, 578],
+  ['PGS', 140, 142, 404, 204],
+  ['PGD', 140, 290, 404, 352],
+  ['MGS', 140, 438, 404, 500],
+  ['MGD', 140, 586, 404, 648],
+  ['GGSIRE1', 405, 105, 600, 167],
+  ['GGDAM1', 405, 179, 600, 241],
+  ['GGSIRE2', 405, 253, 600, 315],
+  ['GGDAM2', 405, 327, 600, 389],
+  ['GGSIRE3', 405, 401, 600, 463],
+  ['GGDAM3', 405, 475, 600, 537],
+  ['GGSIRE4', 405, 549, 600, 611],
+  ['GGDAM4', 405, 623, 600, 685],
+];
+// The page-bottom certification paragraph ("I hereby certify that
+// this pedigree is correct...") happens to sit inside the MGD box's
+// text zone in this layout, so its words are filtered out by content
+// before box-matching rather than by position.
+function pdfWhosDueIsCertText(s){
+  return /^(I|hereby|certify|that|this|pedigree|is|correct|to|the|best|of|my|knowledge|and|belief\.?|Signed:?)$/i.test((s||'').trim());
+}
+function parseWhosDueVariant2PedigreePdf(items, viewport){
+  if(Math.abs(viewport.width-612)>15 || Math.abs(viewport.height-792)>15){
+    return { ok:false, error:"This PDF's page size doesn't match the expected Who's Due layout, so the positions couldn't be read reliably." };
+  }
+  const cleanItems = items.filter(it=>!pdfWhosDueIsCertText(it.str));
+
+  const headerItems = cleanItems.filter(it=>it.top<100);
+  const headerLines = pdfLinesFromItems(headerItems);
+  const nameLine = headerLines.find(l=>/^\S+\s*-\s*.+/.test(l) && !/Pedigree/i.test(l));
+  let selfName='', selfEar='';
+  if(nameLine){
+    const m = nameLine.match(/^(\S+)\s*-\s*(.+)$/);
+    if(m){ selfEar=m[1].trim(); selfName=m[2].trim(); }
+  }
+  const infoText = headerLines.join(' ');
+  const f = pdfWhosDueExtractFields(infoText);
+  const selfSlot = {
+    name: selfName, sex: /buck/i.test(f['Gender']||'') ? 'buck' : 'doe',
+    color: pdfDashClean(f['Variety']), earNumber: selfEar,
+    registrationNumber: pdfDashClean(f['Reg #']), weight: pdfDashClean(f['Weight']),
+    legsWins: pdfDashClean(f['Legs']), dob: pdfWhosDueParseDate(f['Born']), gc: pdfDashClean(f['G.C. #']),
+  };
+  const breed = pdfDashClean(f['Breed']);
+  if(!selfSlot.name){
+    return { ok:false, error:"Couldn't find the main rabbit's details on this pedigree — the file may not match the expected Who's Due layout." };
+  }
+
+  const slots = { SELF: selfSlot };
+  for(const [role,x0,top,x1,bottom] of WHOSDUE2_PDF_BOXES){
+    const boxItems = cleanItems.filter(it=>it.x>=x0-2 && it.x<=x1+2 && it.top>=top-2 && it.top<=bottom+2);
+    slots[role] = pdfParseWhosDueBoxLines(pdfLinesFromItems(boxItems), role);
+  }
+
+  const rows = [];
+  const seen = new Set();
+  const roleOrder = ['SELF', ...WHOSDUE2_PDF_BOXES.map(b=>b[0])];
+  for(const role of roleOrder){
+    const data = slots[role];
+    if(!data || !data.name) continue;
+    const key = data.name.trim().toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    const [sireRole, damRole] = PEDIGREE_PARENT_OF[role] || [];
+    const sireData = sireRole ? slots[sireRole] : null;
+    const damData = damRole ? slots[damRole] : null;
+    const rowData = {
+      name: data.name, sex: data.sex, breed, color: data.color,
+      earNumber: data.earNumber, dob: data.dob, weight: data.weight,
+      legsWins: data.legsWins, registrationNumber: data.registrationNumber,
+      sireName: sireData ? sireData.name : '', damName: damData ? damData.name : '',
+      notes: data.gc ? `GC #: ${data.gc}` : '',
+      status: data.sex==='doe' ? 'open' : 'available',
+    };
+    const existing = findByName(rowData.name);
+    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+  }
+  return { ok:true, rows, breed };
+}
+
 async function parsePedigreePdf(arrayBuffer){
   if(!window.pdfjsLib) return { ok:false, error:"The PDF reader didn't load — refresh the page and try again." };
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
@@ -4884,6 +4972,7 @@ async function parsePedigreePdf(arrayBuffer){
     return parseEverbreedPedigreePdf(items, viewport);
   }
   if(/Printed by Who'?s Due/i.test(fullText)){
+    if(Math.abs(viewport.width-612)<15 && Math.abs(viewport.height-792)<15) return parseWhosDueVariant2PedigreePdf(items, viewport);
     return parseWhosDuePedigreePdf(items, viewport);
   }
   if(!/Rabbit Register/i.test(fullText)){
