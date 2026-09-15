@@ -169,7 +169,7 @@
   .save-error-banner .seb-text b{ display:block; margin-bottom:2px; }
   .save-error-banner button{ flex:0 0 auto; background:rgba(255,255,255,.18); border:none; color:#fff; border-radius:6px; padding:6px 10px; font-family:'Jost',sans-serif; font-weight:600; font-size:12px; cursor:pointer; }
   [data-theme="dark"] .toast{background:var(--gold-deep); color:#0c1830;}
-  .toast.on{opacity:1;}
+  .toast.on{opacity:1; pointer-events:auto;}
 
   .relate-box{ background:#fbf7ec; border:1px solid var(--gold); border-radius:8px; padding:10px 12px; font-size:13px; margin-top:6px; line-height:1.5; color:#0c1830; }
   .relate-box.close{border-color:var(--rust); background:var(--rust-light); color:var(--ink);}
@@ -1310,12 +1310,13 @@ function renderRabbits(main){
   } else if(rabbitsGroup==='bucks'){
     const it=rabbits.filter(r=>r.sex==='buck'&&isActive(r)&&r.status!=='growing').sort((a,b)=>a.name.localeCompare(b.name));
     body=`<div class="section-label">${it.length} TOTAL BUCK${it.length===1?'':'S'}</div>`+
-      (it.length?it.map(buckCardHTML).join(''):`<div class="empty">No bucks yet. Tap Add rabbit in More.</div>`);
+      (it.length?it.map(buckCardHTML).join(''):`<div class="empty">No bucks yet. Tap + Add a rabbit above.</div>`);
   } else if(rabbitsGroup==='juniors'){
     const it=rabbits.filter(r=>r.status==='growing'||(r.status==='reserved'&&r.dob&&ageDays(r)<182)).sort((a,b)=>(a.dob||'9').localeCompare(b.dob||'9'));
     body=it.length?it.map(juniorCardHTML).join(''):`<div class="empty">No juniors on file. They appear automatically after you log a litter.</div>`;
   }
-  main.innerHTML = groupTabs + body;
+  main.innerHTML = groupTabs + `<button class="btn btn-secondary" style="width:100%; margin:10px 0 14px;" id="herdAddRabbitBtn">+ Add a rabbit</button>` + body;
+  document.getElementById('herdAddRabbitBtn').onclick = openAddSheet;
   document.querySelectorAll('[data-rgroup]').forEach(b=>b.onclick=()=>{ rabbitsGroup=b.dataset.rgroup; render(); window.scrollTo(0,0); });
   document.querySelectorAll('[data-doesfilter]').forEach(b=>b.onclick=()=>{ doesFilter=b.dataset.doesfilter; render(); });
 }
