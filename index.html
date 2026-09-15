@@ -382,6 +382,7 @@
     #main.card-grid > .stats,
     #main.card-grid > .subnav-wrap,
     #main.card-grid > .todo-row,
+    #main.card-grid > .todo-nestgroup,
     #main.card-grid > .action-row,
     #main.card-grid > button{
       grid-column:1 / -1;
@@ -2134,21 +2135,30 @@ function attnRowHTML({ urgent=false, text, sub='', buttons='', circleId=null, ci
   </div>`;
 }
 function nestGroupHTML(nest){
-  return `<div class="todo-row" data-nesttoggle="1" style="cursor:pointer;">
-    <div class="todo-text" style="flex:1;"><b>Add nest box</b> — ${nest.length} doe${nest.length===1?'':'s'}
-      <div class="todo-sub-text">Due to kindle within 3 days</div></div>
-    <button class="todo-chevron" data-nesttoggle="1" aria-label="Expand">${CHEVRON_SVG}</button>
-  </div>
-  <div class="todo-sub" id="nestGroupBody" style="display:none;">
-    ${nest.map(r=>{
-      const d=daysToDue(r);
-      const when = d===0 ? 'due today' : `due in ${d} day${d===1?'':'s'}`;
-      return attnRowHTML({ text:`<b>${esc(r.name)}</b> — ${when}`, circleId:r.id, circleType:'nest', circleLabel:`${r.name}'s nest box marked done`, snoozeId:r.id, snoozeType:'nest' });
-    }).join('')}
+  return `<div class="todo-nestgroup">
+    <div class="todo-row" data-nesttoggle="1" style="cursor:pointer;">
+      <div class="todo-text" style="flex:1;"><b>Add nest box</b> — ${nest.length} doe${nest.length===1?'':'s'}
+        <div class="todo-sub-text">Due to kindle within 3 days</div></div>
+      <button class="todo-chevron" data-nesttoggle="1" aria-label="Expand">${CHEVRON_SVG}</button>
+    </div>
+    <div class="todo-sub nestgroup-body" style="display:none;">
+      ${nest.map(r=>{
+        const d=daysToDue(r);
+        const when = d===0 ? 'due today' : `due in ${d} day${d===1?'':'s'}`;
+        return attnRowHTML({ text:`<b>${esc(r.name)}</b> — ${when}`, circleId:r.id, circleType:'nest', circleLabel:`${r.name}'s nest box marked done`, snoozeId:r.id, snoozeType:'nest' });
+      }).join('')}
+    </div>
   </div>`;
 }
 function wireAttentionRows(root){
-  root.querySelectorAll('[data-nesttoggle]').forEach(b=>b.onclick=()=>{ const body=root.querySelector('#nestGroupBody'); if(body) body.style.display = body.style.display==='none'?'block':'none'; });
+  root.querySelectorAll('[data-nesttoggle]').forEach(b=>{
+    b.addEventListener('click', (ev)=>{
+      ev.stopPropagation();
+      const group = b.closest('.todo-nestgroup');
+      const body = group && group.querySelector('.nestgroup-body');
+      if(body) body.style.display = body.style.display==='none' ? 'block' : 'none';
+    });
+  });
   root.querySelectorAll('[data-circledone]').forEach(el=>el.onclick=()=>{
     const id=el.dataset.circledone, type=el.dataset.circletype, label=el.dataset.circlelabel;
     const r=rabbits.find(x=>x.id===id); if(!r) return;
