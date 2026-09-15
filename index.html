@@ -5055,10 +5055,10 @@ async function finishAgreementFlow(){
   await loadData();
 }
 
-let enterAppStarted = false;
+let enterAppForUserId = null;
 async function enterApp(user){
-  if(enterAppStarted) return;
-  enterAppStarted = true;
+  if(enterAppForUserId === user.id) return;
+  enterAppForUserId = user.id;
   try{
     document.body.classList.add('auth-locked');
     await initCloudStorage(user);
@@ -5066,6 +5066,7 @@ async function enterApp(user){
     if(myProfile && myProfile.access_granted===false){
       await sb.auth.signOut();
       currentUser=null; cloudDataReady=false; cloudDataCache={}; myProfile=null; isAdminUser=false; adminSelf=null;
+      enterAppForUserId = null;
       authScreen.classList.remove('hidden');
       setAuthMessage("Your account doesn't have access yet. Contact CJM Legacy Rabbitry to get set up.");
       return;
@@ -5083,7 +5084,7 @@ async function enterApp(user){
     authScreen.classList.remove('hidden');
     document.body.classList.add('auth-locked');
     setAuthMessage('Could not connect to HerdNerd Pro data. '+(err.message||''));
-    enterAppStarted = false;
+    enterAppForUserId = null;
   }
 }
 
@@ -5093,7 +5094,7 @@ sb.auth.onAuthStateChange((event,session)=>{
   } else {
     currentUser=null; cloudDataReady=false; cloudDataCache={};
     myProfile=null; isAdminUser=false; adminSelf=null; viewingAsCustomer=null;
-    enterAppStarted = false;
+    enterAppForUserId = null;
     authScreen.classList.remove('hidden');
     document.body.classList.add('auth-locked');
     setAuthMode('login');
