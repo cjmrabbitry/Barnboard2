@@ -872,7 +872,7 @@ function autoGraduateJuniors(){
 }
 function render(){
   autoGraduateJuniors();
-  document.getElementById('quickBredBtn').style.display = (currentTab==='rabbits'&&rabbitsGroup==='does') ? '' : 'none';
+  document.getElementById('quickBredBtn').style.display = 'none';
   const banner = document.getElementById('adminViewBanner');
   if(viewingAsCustomer){
     banner.style.display = 'flex';
@@ -1315,8 +1315,15 @@ function renderRabbits(main){
     const it=rabbits.filter(r=>r.status==='growing'||(r.status==='reserved'&&r.dob&&ageDays(r)<182)).sort((a,b)=>(a.dob||'9').localeCompare(b.dob||'9'));
     body=it.length?it.map(juniorCardHTML).join(''):`<div class="empty">No juniors on file. They appear automatically after you log a litter.</div>`;
   }
-  main.innerHTML = groupTabs + `<button class="btn btn-secondary" style="width:100%; margin:10px 0 14px;" id="herdAddRabbitBtn">+ Add a rabbit</button>` + body;
+  const actionRow = rabbitsGroup==='does'
+    ? `<div style="display:flex; gap:10px; margin:10px 0 14px;">
+         <button class="btn btn-primary" style="flex:1;" id="herdRecordBreedingBtn">+ Record a breeding</button>
+         <button class="btn btn-secondary" style="flex:1;" id="herdAddRabbitBtn">+ Add a rabbit</button>
+       </div>`
+    : `<button class="btn btn-secondary" style="width:100%; margin:10px 0 14px;" id="herdAddRabbitBtn">+ Add a rabbit</button>`;
+  main.innerHTML = groupTabs + actionRow + body;
   document.getElementById('herdAddRabbitBtn').onclick = openAddSheet;
+  if(document.getElementById('herdRecordBreedingBtn')) document.getElementById('herdRecordBreedingBtn').onclick = openQuickBreedSheet;
   document.querySelectorAll('[data-rgroup]').forEach(b=>b.onclick=()=>{ rabbitsGroup=b.dataset.rgroup; render(); window.scrollTo(0,0); });
   document.querySelectorAll('[data-doesfilter]').forEach(b=>b.onclick=()=>{ doesFilter=b.dataset.doesfilter; render(); });
 }
