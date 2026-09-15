@@ -4746,6 +4746,128 @@ function parseEverbreedPedigreePdf(items, viewport){
   return { ok:true, rows };
 }
 
+// "Who's Due" pedigree export — flat text (no fillable fields), same
+// as Rabbit Register/Everbreed. Box positions measured directly from
+// a real Who's Due pedigree PDF on landscape Letter (792x612pt).
+// Unlike the other two formats, each box's own headline carries its
+// role label directly ("Sire: Name" / "Dam: Name" / "Name: Name"),
+// and breed+sex come from a caption line near the top ("Holland Lop
+// Doe") rather than a labeled field.
+const WHOSDUE_PDF_BOXES = [
+  ['SELF', 40, 260, 215, 332],
+  ['SIRE', 220, 123, 405, 195],
+  ['DAM', 220, 398, 405, 470],
+  ['PGS', 406, 54, 585, 126],
+  ['PGD', 406, 191, 585, 263],
+  ['MGS', 406, 329, 585, 401],
+  ['MGD', 406, 467, 585, 539],
+  ['GGSIRE1', 588, 22, 792, 90],
+  ['GGDAM1', 588, 91, 792, 159],
+  ['GGSIRE2', 588, 159, 792, 227],
+  ['GGDAM2', 588, 228, 792, 296],
+  ['GGSIRE3', 588, 297, 792, 365],
+  ['GGDAM3', 588, 366, 792, 434],
+  ['GGSIRE4', 588, 435, 792, 503],
+  ['GGDAM4', 588, 504, 792, 572],
+];
+function pdfWhosDueParseDate(s){
+  s = (s||'').trim();
+  const m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+  if(m) return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`;
+  return csvParseDate(s);
+}
+function pdfWhosDueExtractFields(text){
+  const labels = ['Ear #','Variety','Weight','Legs','Reg #','G.C. #','Born'];
+  const positions=[];
+  labels.forEach(label=>{
+    const re = new RegExp('\\b'+label.replace('#','\\#')+'\\s*:','i');
+    const m = text.match(re);
+    if(m) positions.push({label, idx:m.index, len:m[0].length});
+  });
+  positions.sort((a,b)=>a.idx-b.idx);
+  const out={};
+  positions.forEach((p,i)=>{
+    const start=p.idx+p.len;
+    const end = i+1<positions.length?positions[i+1].idx:text.length;
+    out[p.label]=text.slice(start,end).trim();
+  });
+  out._head = positions.length ? text.slice(0,positions[0].idx).trim() : text.trim();
+  return out;
+}
+function pdfParseWhosDueBoxLines(lines, role){
+  if(!lines.length) return null;
+  const joined = lines.join(' ').replace(/\s+/g,' ').trim();
+  const f = pdfWhosDueExtractFields(joined);
+  const headMatch = (f._head||'').match(/^(Sire|Dam|Name)\s*:\s*(.*)$/i);
+  let name = f._head||'', sex = null;
+  if(headMatch){
+    name = headMatch[2].trim();
+    if(/^sire$/i.test(headMatch[1])) sex = 'buck';
+    else if(/^dam$/i.test(headMatch[1])) sex = 'doe';
+  }
+  if(!sex) sex = role==='SELF' ? null : (PEDIGREE_MALE_ROLES.has(role) ? 'buck' : 'doe');
+  return {
+    name, sex,
+    color: pdfDashClean(f['Variety']),
+    earNumber: pdfDashClean(f['Ear #']),
+    registrationNumber: pdfDashClean(f['Reg #']),
+    weight: pdfDashClean(f['Weight']), // kept as-is, e.g. "3 lb 7 oz" — not a decimal format
+    legsWins: pdfDashClean(f['Legs']),
+    dob: pdfWhosDueParseDate(f['Born']),
+    gc: pdfDashClean(f['G.C. #']),
+  };
+}
+function parseWhosDuePedigreePdf(items, viewport){
+  if(Math.abs(viewport.width-792)>15 || Math.abs(viewport.height-612)>15){
+    return { ok:false, error:"This PDF's page size doesn't match the expected Who's Due layout, so the positions couldn't be read reliably." };
+  }
+  // Breed + sex come from a caption line near the top-left, e.g.
+  // "Holland Lop Doe" — the breed is everything before the final
+  // Doe/Buck word.
+  const headerItems = items.filter(it=>it.top<100 && it.x<220);
+  const headerLines = pdfLinesFromItems(headerItems);
+  const capLine = headerLines.find(l=>/\b(Doe|Buck)\s*$/i.test(l.trim()));
+  let breed='', selfSex=null;
+  if(capLine){
+    const m = capLine.trim().match(/^(.*)\s+(Doe|Buck)\s*$/i);
+    if(m){ breed = m[1].trim(); selfSex = /doe/i.test(m[2]) ? 'doe' : 'buck'; }
+  }
+
+  const slots = {};
+  for(const [role,x0,top,x1,bottom] of WHOSDUE_PDF_BOXES){
+    const boxItems = items.filter(it=>it.x>=x0-2 && it.x<=x1+2 && it.top>=top-2 && it.top<=bottom+2);
+    slots[role] = pdfParseWhosDueBoxLines(pdfLinesFromItems(boxItems), role);
+  }
+  if(!slots.SELF || !slots.SELF.name){
+    return { ok:false, error:"Couldn't find the main rabbit's details on this pedigree — the file may not match the expected Who's Due layout." };
+  }
+  if(!slots.SELF.sex) slots.SELF.sex = selfSex || 'doe';
+
+  const rows = [];
+  const seen = new Set();
+  for(const [role] of WHOSDUE_PDF_BOXES){
+    const data = slots[role];
+    if(!data || !data.name) continue;
+    const key = data.name.trim().toLowerCase();
+    if(seen.has(key)) continue;
+    seen.add(key);
+    const [sireRole, damRole] = PEDIGREE_PARENT_OF[role] || [];
+    const sireData = sireRole ? slots[sireRole] : null;
+    const damData = damRole ? slots[damRole] : null;
+    const rowData = {
+      name: data.name, sex: data.sex, breed, color: data.color,
+      earNumber: data.earNumber, dob: data.dob, weight: data.weight,
+      legsWins: data.legsWins, registrationNumber: data.registrationNumber,
+      sireName: sireData ? sireData.name : '', damName: damData ? damData.name : '',
+      notes: data.gc ? `GC #: ${data.gc}` : '',
+      status: data.sex==='doe' ? 'open' : 'available',
+    };
+    const existing = findByName(rowData.name);
+    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+  }
+  return { ok:true, rows, breed };
+}
+
 async function parsePedigreePdf(arrayBuffer){
   if(!window.pdfjsLib) return { ok:false, error:"The PDF reader didn't load — refresh the page and try again." };
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
@@ -4761,8 +4883,11 @@ async function parsePedigreePdf(arrayBuffer){
   if(/everbreed/i.test(fullText)){
     return parseEverbreedPedigreePdf(items, viewport);
   }
+  if(/Printed by Who'?s Due/i.test(fullText)){
+    return parseWhosDuePedigreePdf(items, viewport);
+  }
   if(!/Rabbit Register/i.test(fullText)){
-    return { ok:false, error:"This doesn't look like a supported pedigree PDF — this importer currently understands Rabbit Register (Evans Software) and Everbreed pedigree exports." };
+    return { ok:false, error:"This doesn't look like a supported pedigree PDF — this importer currently understands Rabbit Register (Evans Software), Everbreed, and Who's Due pedigree exports." };
   }
   if(Math.abs(viewport.width-792)>15 || Math.abs(viewport.height-612)>15){
     return { ok:false, error:"This PDF's page size doesn't match the expected Rabbit Register layout, so the positions couldn't be read reliably." };
@@ -4813,7 +4938,7 @@ async function parsePedigreePdf(arrayBuffer){
 function openImportPedigreePdfSheet(){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Import from Pedigree PDF</h2>
-    <div class="card-sub" style="margin-bottom:12px;">Upload a 4-generation pedigree PDF exported from Rabbit Register (Evans Software) or Everbreed — the formats many breeders share when a rabbit changes hands. The rabbit, its parents, grandparents, and great-grandparents are all read automatically and matched up by name, with everything shown to you for review before anything is added.</div>
+    <div class="card-sub" style="margin-bottom:12px;">Upload a 4-generation pedigree PDF exported from Rabbit Register (Evans Software), Everbreed, or Who's Due — the formats many breeders share when a rabbit changes hands. The rabbit, its parents, grandparents, and great-grandparents are all read automatically and matched up by name, with everything shown to you for review before anything is added.</div>
     <button class="btn btn-primary" style="width:100%;" id="pdfPickBtn">Choose pedigree PDF</button>
     <div id="csvPreviewArea"></div>`);
   document.getElementById('pdfPickBtn').onclick = ()=>document.getElementById('pedigreePdfFileInput').click();
@@ -4830,7 +4955,7 @@ function openImportPedigreePdfSheet(){
       renderCsvPreview();
     }catch(err){
       console.error(err);
-      area.innerHTML = `<div class="dupe-box">Couldn't read that PDF — make sure it's a Rabbit Register or Everbreed pedigree export.</div>`;
+      area.innerHTML = `<div class="dupe-box">Couldn't read that PDF — make sure it's a Rabbit Register, Everbreed, or Who's Due pedigree export.</div>`;
     }
   };
 }
