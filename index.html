@@ -2840,10 +2840,7 @@ function openEditSheet(r, origin){
     <div class="field"><label>Sex</label><div class="seg" id="f-sex">
       <button data-v="doe" class="${r.sex==='doe'?'on':''}">Doe</button><button data-v="buck" class="${r.sex==='buck'?'on':''}">Buck</button></div></div>
     <div class="row2">
-      <div class="field"><label>Breed</label><select id="f-breed">
-        <option ${r.breed==='Holland Lop'?'selected':''}>Holland Lop</option>
-        <option ${r.breed==='Dwarf Hotot'?'selected':''}>Dwarf Hotot</option>
-        <option ${r.breed&&r.breed!=='Holland Lop'&&r.breed!=='Dwarf Hotot'?'selected':''}>Other</option></select></div>
+      <div class="field"><label>Breed</label><input id="f-breed" list="breed-options" value="${esc(r.breed||'')}" placeholder="Start typing…">${breedDatalistHTML()}</div>
       <div class="field"><label>Color / Variety</label><input id="f-color" value="${esc(r.color||'')}"></div>
     </div>
     <div class="row2">
@@ -2916,13 +2913,27 @@ function openEditSheet(r, origin){
   document.getElementById('f-delete').onclick=(e)=>{ armConfirm(e.target, 'Tap again to confirm', ()=>{ rabbits=rabbits.filter(x=>x.id!==r.id); saveData(); closeSheet(); closeProfile(); render(); showToast(r.name+' deleted'); }); };
 }
 
+const RABBIT_BREEDS = [
+  'American','American Chinchilla','American Fuzzy Lop','American Sable','Argente Brun',
+  'Belgian Hare','Beveren','Blanc de Hotot','Britannia Petite','Californian',
+  'Champagne D\u2019Argent','Checkered Giant','Chinchilla (Standard)','Chinchilla (Giant)',
+  'Cinnamon','Continental Giant','Crème D\u2019Argent','Dutch','Dwarf Hotot','English Angora','English Lop',
+  'English Spot','Flemish Giant','Florida White','French Angora','French Lop',
+  'Giant Angora','Giant Chinchilla','Harlequin','Havana','Himalayan','Holland Lop',
+  'Jersey Wooly','Lilac','Lionhead','Mini Lop','Mini Rex','Mini Satin','Netherland Dwarf',
+  'New Zealand','Palomino','Polish','Rex','Rhinelander','Satin','Satin Angora','Silver','Silver Fox',
+  'Silver Marten','Standard Chinchilla','Tan','Thrianta','Velveteen Lop',
+];
+function breedDatalistHTML(){
+  return `<datalist id="breed-options">${RABBIT_BREEDS.map(b=>`<option value="${esc(b)}">`).join('')}</datalist>`;
+}
 function openAddSheet(){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Add rabbit</h2>
     <div class="field"><label>Name</label><input id="f-name" placeholder="CJM Clover"></div>
     <div class="field"><label>Sex</label><div class="seg" id="f-sex"><button data-v="doe" class="on">Doe</button><button data-v="buck">Buck</button></div></div>
     <div class="row2">
-      <div class="field"><label>Breed</label><select id="f-breed"><option>Holland Lop</option><option>Dwarf Hotot</option><option>Other</option></select></div>
+      <div class="field"><label>Breed</label><input id="f-breed" list="breed-options" placeholder="Start typing…">${breedDatalistHTML()}</div>
       <div class="field"><label>Color / Variety</label><input id="f-color"></div>
     </div>
     <div class="field"><label>Date of birth</label><input type="date" id="f-dob"></div>
