@@ -3408,7 +3408,13 @@ const TONYS_HOLLANDS_FIELD_MAP = {
 };
 // Add an entry here any time a genuinely different layout needs mapping.
 // Existing/default-shaped templates need nothing added — they just work.
-const PEDIGREE_FIELD_MAPS = { 'tonys-hollands': TONYS_HOLLANDS_FIELD_MAP };
+// Any template built fresh (not scanned from an existing paper form)
+// names its AcroForm fields to literally match each role, e.g. the
+// field for "SIRE_NAME" is named exactly "SIRE_NAME" — so it needs an
+// identity map rather than falling back to the default, which points
+// at the original scanned template's auto-generated field IDs.
+const IDENTITY_FIELD_MAP = Object.keys(PEDIGREE_FIELD_MAP).reduce((m,k)=>{ m[k]=k; return m; }, {});
+const PEDIGREE_FIELD_MAPS = { 'tonys-hollands': TONYS_HOLLANDS_FIELD_MAP, 'generic': IDENTITY_FIELD_MAP, 'cjm-legacy': IDENTITY_FIELD_MAP };
 function fieldMapForTemplate(name){ return PEDIGREE_FIELD_MAPS[name] || PEDIGREE_FIELD_MAP; }
 function fillAncestorBoxValues(prefix, anc, put){
   if(!anc) return;
