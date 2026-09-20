@@ -452,6 +452,10 @@
         <label for="authWebsite">Website (optional)</label>
         <input id="authWebsite" type="text" autocomplete="url" placeholder="e.g. yourrabbitry.com">
       </div>
+      <div class="auth-field" id="authLocationWrap" style="display:none;">
+        <label for="authLocation">Location (optional)</label>
+        <input id="authLocation" type="text" autocomplete="address-level2" placeholder="e.g. La Plata, Maryland">
+      </div>
       <div class="auth-field">
         <label for="authPassword">Password</label>
         <input id="authPassword" type="password" autocomplete="current-password" minlength="6" required>
@@ -2329,7 +2333,7 @@ function renderHome(main){
   main.innerHTML = h;
 
   document.getElementById('qaAddBreeding').onclick = ()=>openAddPlannedSheet();
-  document.getElementById('qaOpenDoes').onclick = ()=>{ currentTab='rabbits'; rabbitsGroup='does'; render(); window.scrollTo(0,0); };
+  document.getElementById('qaOpenDoes').onclick = ()=>{ currentTab='rabbits'; rabbitsGroup='does'; doesFilter='open'; render(); window.scrollTo(0,0); };
   document.getElementById('qaForSale').onclick = ()=>{ currentTab='forsale'; render(); window.scrollTo(0,0); };
   document.getElementById('qaAddRabbit').onclick = openAddSheet;
   if(document.getElementById('showBannerCard')) document.getElementById('showBannerCard').onclick = openShowsSheet;
@@ -2492,12 +2496,12 @@ function openAddEventSheet(defaultDate){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Add an event</h2>
     <div class="field"><label>Title</label><input id="f-evtitle" placeholder="e.g. Vet visit, show entry deadline"></div>
-    <div class="field"><label>Date</label><input type="date" id="f-evdate" value="${defaultDate||todayStr()}"></div>
+    <div class="field"><label>Date</label><input type="text" inputmode="numeric" id="f-evdate" value="${esc(isoToSlash(defaultDate||todayStr()))}" placeholder="MM/DD/YYYY"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
   document.getElementById('f-save').onclick=()=>{
     const title=document.getElementById('f-evtitle').value.trim();
     if(!title){ showToast('Enter a title'); return; }
-    const d = document.getElementById('f-evdate').value||todayStr();
+    const d = csvParseDate(document.getElementById('f-evdate').value)||todayStr();
     customEvents.push({id:uid(), title, date:d});
     calSelectedDate = d;
     saveEvents(); closeSheet(); render(); showToast('Event added');
@@ -2561,6 +2565,37 @@ function attachSuggest(input, getOptions){
 }
 function allRabbitNames(excludeId){ return rabbits.filter(r=>r.id!==excludeId).map(r=>r.name); }
 function allKnownColors(){ return [...new Set(rabbits.map(r=>r.color).filter(Boolean))].sort(); }
+
+// Live "this rabbit already exists" suggestions on a Name field. Unlike
+// attachSuggest, picking one doesn't just fill in text — it jumps
+// straight into editing that real record, since the whole point is to
+// stop a duplicate being created (e.g. a rabbit that already exists as
+// a bare-bones ancestor stub from a pedigree import) and instead pull
+// in every field that record already has.
+function attachNameMatchSuggest(input){
+  const box = document.createElement('div');
+  box.className = 'suggest-box';
+  input.insertAdjacentElement('afterend', box);
+  function render(){
+    const q = input.value.trim().toLowerCase();
+    if(q.length<2){ box.style.display='none'; box.innerHTML=''; return; }
+    const matches = rabbits.filter(r=>r.name.toLowerCase().includes(q)).slice(0,6);
+    if(!matches.length){ box.style.display='none'; box.innerHTML=''; return; }
+    box.style.display='block';
+    box.innerHTML = matches.map(r=>`<button type="button" class="suggest-item" data-existingid="${r.id}">${esc(r.name)} <span style="opacity:.6; font-size:11px;">— already in your herd</span></button>`).join('');
+    box.querySelectorAll('.suggest-item').forEach(btn=>{
+      btn.addEventListener('mousedown', e=>e.preventDefault());
+      btn.addEventListener('click', ()=>{
+        const r = rabbits.find(x=>x.id===btn.dataset.existingid);
+        box.style.display='none'; box.innerHTML='';
+        if(r){ closeSheet(); if(isArchived(r)) openUnarchive(r); else openEditSheet(r); }
+      });
+    });
+  }
+  input.addEventListener('input', render);
+  input.addEventListener('focus', render);
+  input.addEventListener('blur', ()=>setTimeout(()=>{ box.style.display='none'; },150));
+}
 
 function markLitterLost(r){
   if(r.activeBreedingId && r.breedingHistory){
@@ -2655,7 +2690,7 @@ function openKindledSheet(r, editing){
   const d = r.litterDead||{DOA:0,peanut:0,passed:0};
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>${esc(r.name)} ${editing?'— edit litter':'kindled'}</h2>
-    <div class="field"><label>Litter born</label><input type="date" id="f-born" value="${editing&&r.litterBornDate?r.litterBornDate:todayStr()}"></div>
+    <div class="field"><label>Litter born</label><input type="text" inputmode="numeric" id="f-born" value="${esc(isoToSlash(editing&&r.litterBornDate?r.litterBornDate:todayStr()))}" placeholder="MM/DD/YYYY"></div>
     <label style="display:block;font-family:'Jost',sans-serif;font-size:12px;font-weight:600;margin-bottom:5px;">Surviving kits</label>
     <div id="kit-rows"></div>
     <button type="button" class="btn btn-secondary btn-sm" id="f-addkit" style="margin-bottom:14px;">+ Add another kit</button>
@@ -2673,7 +2708,7 @@ function openKindledSheet(r, editing){
   let weeks=r.rebreedWeeks||3;
   document.querySelectorAll('#f-weeks button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-weeks button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); weeks=+b.dataset.v; });
   document.getElementById('f-save').onclick=()=>{
-    const born=document.getElementById('f-born').value||todayStr();
+    const born=csvParseDate(document.getElementById('f-born').value)||todayStr();
     const doa=+document.getElementById('f-doa').value||0, pea=+document.getElementById('f-peanut').value||0, pas=+document.getElementById('f-passed').value||0;
     const bA=kitRows.filter(k=>k.sex==='buck').length, dA=kitRows.filter(k=>k.sex==='doe').length;
     const wasEditing = editing;
@@ -2703,7 +2738,7 @@ function openBreedSheet(r, presetBuck, onDone){
     <h2>${esc(r.name)} bred</h2>
     <div class="field"><label>Buck</label><input id="f-buck" placeholder="Type or pick a buck" value="${esc(presetBuck||'')}"></div>
     <div id="f-relate" class="relate-box">Pick a buck to check relatedness.</div>
-    <div class="field" style="margin-top:12px;"><label>Bred date</label><input type="date" id="f-bred" value="${todayStr()}"></div>
+    <div class="field" style="margin-top:12px;"><label>Bred date</label><input type="text" inputmode="numeric" id="f-bred" value="${esc(isoToSlash(todayStr()))}" placeholder="MM/DD/YYYY"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
   const buckInput=document.getElementById('f-buck'), box=document.getElementById('f-relate'), saveBtn=document.getElementById('f-save');
   attachSuggest(buckInput, ()=>bucks);
@@ -2716,7 +2751,7 @@ function openBreedSheet(r, presetBuck, onDone){
   }
   buckInput.addEventListener('input',upd); upd();
   saveBtn.onclick=()=>{
-    const buck=buckInput.value.trim(), bred=document.getElementById('f-bred').value||todayStr();
+    const buck=buckInput.value.trim(), bred=csvParseDate(document.getElementById('f-bred').value)||todayStr();
     if(buck && !rabbits.some(x=>x.name.trim().toLowerCase()===buck.toLowerCase())){
       const dupes=fuzzyMatches(buck);
       if(dupes.length){ openDuplicateSheet(buck, dupes, chosen=>{ commitBreed(r, chosen||buck, bred, onDone); }); return; }
@@ -2756,9 +2791,9 @@ function openSaleSheet(r){
     <h2>Sell ${esc(r.name)}</h2>
     <div class="card-sub" style="margin-bottom:12px;">Only a sold date is required. A deposit with no sold date marks this rabbit Reserved.</div>
     <div class="field"><label>Deposit ($)</label><input type="number" id="f-dep" value="${esc(s.deposit||'')}" placeholder="50"></div>
-    <div class="field"><label>Deposit date</label><input type="date" id="f-depdate" value="${s.depositDate||''}"></div>
-    <div class="field"><label>Sold date</label><input type="date" id="f-sold" value="${s.soldDate||''}"></div>
-    <div class="field"><label>Pickup date</label><input type="date" id="f-pickup" value="${s.pickupDate||''}"></div>
+    <div class="field"><label>Deposit date</label><input type="text" inputmode="numeric" id="f-depdate" value="${esc(isoToSlash(s.depositDate))}" placeholder="MM/DD/YYYY"></div>
+    <div class="field"><label>Sold date</label><input type="text" inputmode="numeric" id="f-sold" value="${esc(isoToSlash(s.soldDate))}" placeholder="MM/DD/YYYY"></div>
+    <div class="field"><label>Pickup date</label><input type="text" inputmode="numeric" id="f-pickup" value="${esc(isoToSlash(s.pickupDate))}" placeholder="MM/DD/YYYY"></div>
     <div class="row2">
       <div class="field"><label>Buyer</label><input id="f-buyer" value="${esc(s.buyer||'')}"></div>
       <div class="field"><label>Sale price ($)</label><input type="number" id="f-price" value="${esc(s.price||'')}"></div>
@@ -2766,11 +2801,11 @@ function openSaleSheet(r){
     <div class="field"><label>Notes</label><textarea id="f-salenotes">${esc(s.notes||'')}</textarea></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
   document.getElementById('f-save').onclick=()=>{
-    const dep=document.getElementById('f-dep').value.trim(), sold=document.getElementById('f-sold').value;
+    const dep=document.getElementById('f-dep').value.trim(), sold=csvParseDate(document.getElementById('f-sold').value)||'';
     if(!dep && !sold){ showToast('Add a sold date, or a deposit to reserve'); return; }
     if(!r.prevStatus && isActive(r)) r.prevStatus=r.status;
-    r.sale={ deposit:dep, depositDate:document.getElementById('f-depdate').value, soldDate:sold,
-      pickupDate:document.getElementById('f-pickup').value, buyer:document.getElementById('f-buyer').value.trim(),
+    r.sale={ deposit:dep, depositDate:csvParseDate(document.getElementById('f-depdate').value)||'', soldDate:sold,
+      pickupDate:csvParseDate(document.getElementById('f-pickup').value)||'', buyer:document.getElementById('f-buyer').value.trim(),
       price:document.getElementById('f-price').value.trim(), notes:document.getElementById('f-salenotes').value.trim() };
     r.status = sold ? 'sold' : 'reserved';
     saveData(); closeSheet(); render(); if(profileRabbitId) renderProfile();
@@ -2868,7 +2903,7 @@ function openEditSheet(r, origin){
       <div class="field"><label>Weight (lbs)</label><input id="f-weight" value="${esc(r.weight||'')}"></div>
     </div>
     <div class="row2">
-      <div class="field"><label>Date of birth</label><input type="date" id="f-dob" value="${r.dob||''}"></div>
+      <div class="field"><label>Date of birth</label><input type="text" inputmode="numeric" id="f-dob" value="${esc(isoToSlash(r.dob))}" placeholder="MM/DD/YYYY"></div>
       <div class="field"><label>Registration #</label><input id="f-reg" value="${esc(r.registrationNumber||'')}"></div>
     </div>
     <div class="field"><label>Legs / Wins</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
@@ -2905,7 +2940,7 @@ function openEditSheet(r, origin){
       r.alias=document.getElementById('f-alias').value.trim();
       r.sex=sex; r.breed=document.getElementById('f-breed').value; r.color=document.getElementById('f-color').value;
       r.earNumber=document.getElementById('f-ear').value; r.weight=document.getElementById('f-weight').value;
-      r.dob=document.getElementById('f-dob').value||null; r.legsWins=document.getElementById('f-legs').value;
+      r.dob=csvParseDate(document.getElementById('f-dob').value)||null; r.legsWins=document.getElementById('f-legs').value;
       r.registrationNumber=document.getElementById('f-reg').value;
       r.sireName=finalSire; r.damName=finalDam; r.notes=document.getElementById('f-notes').value;
       if(finalSire) ensureAncestor(finalSire,'buck');
@@ -2956,7 +2991,7 @@ function openAddSheet(){
       <div class="field"><label>Breed</label><input id="f-breed" list="breed-options" placeholder="Start typing…">${breedDatalistHTML()}</div>
       <div class="field"><label>Color / Variety</label><input id="f-color"></div>
     </div>
-    <div class="field"><label>Date of birth</label><input type="date" id="f-dob"></div>
+    <div class="field"><label>Date of birth</label><input type="text" inputmode="numeric" id="f-dob" placeholder="MM/DD/YYYY"></div>
     <div class="field"><label>Status</label><select id="f-status">
         <option value="open">Open / available</option><option value="growing">Junior (growing)</option>
         <option value="pregnant">Bred</option>
@@ -2969,6 +3004,7 @@ function openAddSheet(){
   attachSuggest(document.getElementById('f-color'), allKnownColors);
   attachSuggest(document.getElementById('f-sire'), ()=>rabbits.filter(x=>x.sex==='buck').map(x=>x.name));
   attachSuggest(document.getElementById('f-dam'), ()=>rabbits.filter(x=>x.sex==='doe').map(x=>x.name));
+  attachNameMatchSuggest(document.getElementById('f-name'));
   let sex='doe';
   document.querySelectorAll('#f-sex button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-sex button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); sex=b.dataset.v; });
   document.getElementById('f-save').onclick=()=>{
@@ -2990,7 +3026,7 @@ function commitAdd(name, sex){
   if(sex==='buck'&&status==='open') status='available';
   const sire=document.getElementById('f-sire').value.trim(), dam=document.getElementById('f-dam').value.trim();
   rabbits.push(blankRabbit({ name, sex, status, breed:document.getElementById('f-breed').value,
-    color:document.getElementById('f-color').value, dob:document.getElementById('f-dob').value||null,
+    color:document.getElementById('f-color').value, dob:csvParseDate(document.getElementById('f-dob').value)||null,
     sireName:sire, damName:dam }));
   if(sire) ensureAncestor(sire,'buck');
   if(dam) ensureAncestor(dam,'doe');
@@ -3431,7 +3467,7 @@ function buildOfficialPedigreeValues(r){
 async function getMyPedigreeProfile(){
   if(localSandboxMode) return { pedigree_template:'generic' };
   try{
-    const {data} = await sb.from('profiles').select('pedigree_template, first_name, last_name, rabbitry_name, phone, website').eq('id',currentUser.id).maybeSingle();
+    const {data} = await sb.from('profiles').select('pedigree_template, first_name, last_name, rabbitry_name, phone, website, location').eq('id',currentUser.id).maybeSingle();
     return data || { pedigree_template:'generic' };
   }catch(e){ return { pedigree_template:'generic' }; }
 }
@@ -3464,12 +3500,37 @@ async function downloadOfficialPedigreePDF(r){
     const form = pdfDoc.getForm();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
     const values = buildOfficialPedigreeValues(r);
-    const fieldMap = { ...fieldMapForTemplate(templateName), ...CONTACT_FIELD_IDS };
-    const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
-    values.RABBITRY_NAME = sanitizeForPdf(myProfileForPdf.rabbitry_name || '');
-    values.BREEDER_NAME = sanitizeForPdf(breederName);
-    values.CONTACT_PHONE = sanitizeForPdf(myProfileForPdf.phone || '');
-    values.CONTACT_WEBSITE = sanitizeForPdf(myProfileForPdf.website || '');
+    const fieldMap = fieldMapForTemplate(templateName);
+    if(templateName==='generic'){
+      // This template combines rabbitry/pedigree, breed/DOB/sex, and
+      // breeder contact info into three single boxes (rather than one
+      // field per line like older templates), so they're built and
+      // filled directly here instead of going through the normal
+      // per-role field map.
+      const rabbitryName = sanitizeForPdf(myProfileForPdf.rabbitry_name || '');
+      try{ form.getTextField('RABBITRY_PEDIGREE_LINE').setText(rabbitryName ? `${rabbitryName}  Pedigree` : 'Pedigree'); }catch(e){}
+      try{
+        const breedVal = sanitizeForPdf(r.breed||'');
+        const dobVal = r.dob ? fmtDate(r.dob) : '';
+        const sexVal = r.sex ? (r.sex==='doe'?'Doe':'Buck') : '';
+        form.getTextField('BREED_DOB_SEX_LINE').setText([breedVal,dobVal,sexVal].filter(Boolean).join('   \u2022   '));
+      }catch(e){}
+      try{
+        const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
+        const infoLines = [breederName, myProfileForPdf.location, myProfileForPdf.website, myProfileForPdf.phone]
+          .map(v=>sanitizeForPdf(v||'')).filter(Boolean);
+        form.getTextField('BREEDER_INFO_BLOCK').setText(infoLines.join('\n'));
+      }catch(e){}
+    } else {
+      // Older/custom templates that use one field per contact line.
+      const fullFieldMap = { ...fieldMap, ...CONTACT_FIELD_IDS };
+      const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
+      values.RABBITRY_NAME = sanitizeForPdf(myProfileForPdf.rabbitry_name || '');
+      values.BREEDER_NAME = sanitizeForPdf(breederName);
+      values.CONTACT_PHONE = sanitizeForPdf(myProfileForPdf.phone || '');
+      values.CONTACT_WEBSITE = sanitizeForPdf(myProfileForPdf.website || '');
+      Object.assign(fieldMap, fullFieldMap);
+    }
 
     const MAX_SIZE = 11, MIN_SIZE = 6, H_PADDING = 8; // points
     Object.entries(values).forEach(([role, value])=>{
@@ -3545,7 +3606,7 @@ function openAddPlannedSheet(presetDoeId){
     <h2>Plan a breeding</h2>
     <div class="field"><label>Doe</label><select id="f-doe"><option value="">Select a doe</option>${does.map(x=>`<option value="${x.id}" ${x.id===presetDoeId?'selected':''}>${esc(x.name)} — ${x.status}</option>`).join('')}</select></div>
     <div class="field"><label>Buck</label><select id="f-buck"><option value="">Select a buck</option>${bucks.map(x=>`<option value="${x.id}">${esc(x.name)} — ${x.status}</option>`).join('')}</select></div>
-    <div class="field"><label>Target date</label><input type="date" id="f-date" value="${todayStr()}"></div>
+    <div class="field"><label>Target date</label><input type="text" inputmode="numeric" id="f-date" value="${esc(isoToSlash(todayStr()))}" placeholder="MM/DD/YYYY"></div>
     <div id="f-relate" class="relate-box">Select both a doe and a buck to check relatedness.</div>
     <div class="field" style="margin-top:12px;"><label>Notes</label><textarea id="f-notes" placeholder="Pairing goal, line you're working"></textarea></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save plan</button></div>`);
@@ -3561,7 +3622,7 @@ function openAddPlannedSheet(presetDoeId){
     const di=document.getElementById('f-doe').value, bi=document.getElementById('f-buck').value;
     if(!di||!bi){ showToast('Pick a doe and a buck'); return; }
     planned.push({ id:uid(), doeId:di, buckId:bi, doeName:(does.find(x=>x.id===di)||{}).name, buckName:(bucks.find(x=>x.id===bi)||{}).name,
-      targetDate:document.getElementById('f-date').value||todayStr(), notes:document.getElementById('f-notes').value });
+      targetDate:csvParseDate(document.getElementById('f-date').value)||todayStr(), notes:document.getElementById('f-notes').value });
     savePlanned(); closeSheet(); currentTab='planned'; render(); showToast('Breeding planned');
   };
 }
@@ -3591,14 +3652,14 @@ function openAddShowSheet(){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Add a show</h2>
     <div class="field"><label>Show name</label><input type="text" id="f-showname" placeholder="Southern MD ARBA Show"></div>
-    <div class="field"><label>Entry deadline</label><input type="date" id="f-showdeadline" value="${todayStr()}"></div>
-    <div class="field"><label>Show date (optional)</label><input type="date" id="f-showdate"></div>
+    <div class="field"><label>Entry deadline</label><input type="text" inputmode="numeric" id="f-showdeadline" value="${esc(isoToSlash(todayStr()))}" placeholder="MM/DD/YYYY"></div>
+    <div class="field"><label>Show date (optional)</label><input type="text" inputmode="numeric" id="f-showdate" placeholder="MM/DD/YYYY"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="openShowsSheet()">Cancel</button><button class="btn btn-primary" id="f-saveshow">Save show</button></div>`);
   document.getElementById('f-saveshow').onclick = ()=>{
     const name = document.getElementById('f-showname').value.trim();
-    const deadline = document.getElementById('f-showdeadline').value;
+    const deadline = csvParseDate(document.getElementById('f-showdeadline').value);
     if(!name || !deadline){ showToast('Add a show name and entry deadline'); return; }
-    shows.push({ id:uid(), name, entryDeadline:deadline, showDate:document.getElementById('f-showdate').value||'' });
+    shows.push({ id:uid(), name, entryDeadline:deadline, showDate:csvParseDate(document.getElementById('f-showdate').value)||'' });
     saveShows(); openShowsSheet(); render(); showToast('Show added');
   };
 }
@@ -3690,7 +3751,7 @@ async function openAuditLogSheet(customerId, customerEmail){
 async function openMyInfoSheet(){
   let profile = {};
   try{
-    const {data} = await sb.from('profiles').select('first_name, last_name, rabbitry_name, phone, website').eq('id',currentUser.id).maybeSingle();
+    const {data} = await sb.from('profiles').select('first_name, last_name, rabbitry_name, phone, website, location').eq('id',currentUser.id).maybeSingle();
     profile = data || {};
   }catch(e){}
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
@@ -3701,6 +3762,7 @@ async function openMyInfoSheet(){
     <div class="field"><label>Rabbitry name</label><input id="mi-rabbitry" value="${esc(profile.rabbitry_name||'')}"></div>
     <div class="field"><label>Email</label><input id="mi-email" type="email" value="${esc(currentUser?.email||'')}"></div>
     <div class="field"><label>Phone number</label><input id="mi-phone" type="tel" value="${esc(profile.phone||'')}"></div>
+    <div class="field"><label>Location (optional)</label><input id="mi-location" value="${esc(profile.location||'')}" placeholder="e.g. La Plata, Maryland"></div>
     <div class="field"><label>Website (optional)</label><input id="mi-website" value="${esc(profile.website||'')}"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="mi-save">Save</button></div>
     <div class="auth-message" id="mi-message"></div>`);
@@ -3715,6 +3777,7 @@ async function openMyInfoSheet(){
         last_name: document.getElementById('mi-last').value.trim(),
         rabbitry_name: document.getElementById('mi-rabbitry').value.trim(),
         phone: document.getElementById('mi-phone').value.trim(),
+        location: document.getElementById('mi-location').value.trim(),
         website: document.getElementById('mi-website').value.trim()
       }).eq('id',currentUser.id);
       if(error) throw error;
@@ -4383,7 +4446,7 @@ function wireCropMode(r, photo){
    CSV IMPORT — parses a CSV, auto-matches columns to fields,
    and asks how to handle any name collisions before committing.
    ============================================================ */
-function parseCSV(text){
+function parseCsvRawRows(text){
   if(text.charCodeAt(0)===0xFEFF) text = text.slice(1); // strip BOM from Excel exports
   const rows = [];
   let row = [], field = '', inQuotes = false;
@@ -4434,11 +4497,17 @@ function csvNormalizeSex(s){
   const v = s.trim().toLowerCase();
   return ['buck','male','m','b'].includes(v) ? 'buck' : 'doe';
 }
+function isoToSlash(iso){
+  const m = (iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${parseInt(m[2])}/${parseInt(m[3])}/${m[1]}` : '';
+}
 function csvParseDate(s){
   if(!s) return null;
   s = s.trim();
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if(m){ return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
+  m = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
   if(m){ return `${m[3]}-${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}`; }
   return null; // unrecognized format — left blank rather than guessed wrong
 }
@@ -4462,7 +4531,7 @@ function openImportCsvSheet(){
   };
 }
 function handleCsvParsed(text){
-  const rows = parseCSV(text);
+  const rows = parseCsvRawRows(text);
   const area = document.getElementById('csvPreviewArea');
   if(rows.length < 2){ area.innerHTML = `<div class="empty">No data rows found in that file.</div>`; return; }
   const headerMap = mapCsvHeaders(rows[0]);
@@ -4644,21 +4713,21 @@ function pdfParseBoxLines(lines, role){
 // Letter (792x612pt) — measured directly from a real Everbreed
 // pedigree export's page geometry.
 const EVERBREED_PDF_BOXES = [
-  ['SELF', 38.6, 265.1, 184.9, 362.6],
-  ['SIRE', 196.1, 169.9, 375.4, 228.4],
-  ['DAM', 196.1, 390.4, 375.4, 448.9],
-  ['PGS', 385.9, 117.4, 565.1, 175.1],
-  ['PGD', 385.9, 223.1, 565.1, 280.9],
-  ['MGS', 385.9, 333.4, 565.1, 391.1],
-  ['MGD', 385.9, 450.4, 565.1, 503.6],
-  ['GGSIRE1', 575.6, 96.4, 754.9, 143.6],
-  ['GGDAM1', 575.6, 148.9, 754.9, 196.9],
-  ['GGSIRE2', 575.6, 202.1, 754.9, 249.4],
-  ['GGDAM2', 575.6, 254.6, 754.9, 301.9],
-  ['GGSIRE3', 575.6, 307.9, 754.9, 359.6],
-  ['GGDAM3', 575.6, 364.9, 754.9, 416.6],
-  ['GGSIRE4', 575.6, 421.9, 754.9, 474.4],
-  ['GGDAM4', 575.6, 479.6, 754.9, 531.4],
+  ['SELF', 38.6, 268.9, 184.9, 358.9],
+  ['SIRE', 196.1, 176.6, 375.4, 235.1],
+  ['DAM', 196.1, 392.6, 375.4, 450.4],
+  ['PGS', 385.9, 124.1, 565.1, 181.9],
+  ['PGD', 385.9, 232.1, 565.1, 289.9],
+  ['MGS', 385.9, 337.9, 565.1, 395.6],
+  ['MGD', 385.9, 448.1, 565.1, 501.4],
+  ['GGSIRE1', 575.6, 100.9, 754.9, 148.1],
+  ['GGDAM1', 575.6, 153.4, 754.9, 205.1],
+  ['GGSIRE2', 575.6, 211.1, 754.9, 258.4],
+  ['GGDAM2', 575.6, 263.6, 754.9, 310.9],
+  ['GGSIRE3', 575.6, 316.1, 754.9, 364.1],
+  ['GGDAM3', 575.6, 369.4, 754.9, 416.6],
+  ['GGSIRE4', 575.6, 421.9, 754.9, 469.9],
+  ['GGDAM4', 575.6, 475.1, 754.9, 526.9],
 ];
 // Everbreed draws every box with a colored border — blue for a buck,
 // pink for a doe. For every ancestor slot that color is exactly
@@ -4683,6 +4752,19 @@ function pdfIsIconGlyph(s){
 }
 function pdfDashClean(v){ v=(v||'').trim(); return (!v||v==='-') ? '' : v; }
 
+// Some Everbreed exports bake tiny extra gaps into certain words'
+// glyph positioning — "COLOR:" can come through as "CO LO R:", "BUCK"
+// as "BU CK". Matching a label letter-by-letter with optional
+// whitespace between each character handles both the normal and the
+// fragmented case, instead of requiring an exact contiguous match.
+function pdfFuzzyLabel(label){
+  return label.split('').map(ch=>{
+    if(ch===' ') return '\\s*';
+    if(ch==='#') return '\\#';
+    return ch.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  }).join('\\s*');
+}
+
 // Everbreed's box layout isn't fixed: on the big SELF box each label
 // ("ID:", "DOB:", "COLOR:", "BREED:"...) gets its own line, but on the
 // smaller ancestor boxes two labels share a line ("ID: ABU DOB:
@@ -4694,7 +4776,7 @@ function pdfEverbreedExtractFields(text){
   const labels = ['ID','DOB','COLOR','BREED','WEIGHT','GC #','GEN'];
   const positions=[];
   labels.forEach(label=>{
-    const re = new RegExp('\\b'+label.replace('#','\\#')+'\\s*:','i');
+    const re = new RegExp('\\b'+pdfFuzzyLabel(label)+'\\s*:','i');
     const m = text.match(re);
     if(m) positions.push({label, idx:m.index, len:m[0].length});
   });
@@ -4707,13 +4789,36 @@ function pdfEverbreedExtractFields(text){
   });
   return out;
 }
+// Collapses a stray space Everbreed sometimes bakes mid-word into its
+// PDF text (a kerning artifact between certain letter pairs). A space
+// with a lowercase letter on both sides is always the same word
+// continuing — a genuine word boundary always capitalizes the next
+// word ("Holland Lop", "Broken Tort") — so only those specific spaces
+// are safe to remove.
+function pdfDefragmentText(s){
+  return (s||'').replace(/([a-z])\s+(?=[a-z])/g, '$1');
+}
 function pdfParseEverbreedBoxLines(lines, role){
   if(!lines.length) return null;
+  const EVERBREED_FIELD_LABELS = ['ID','DOB','COLOR','BREED','WEIGHT','GC #','GEN'];
+  const buckPat = pdfFuzzyLabel('BUCK'), doePat = pdfFuzzyLabel('DOE');
+  const buckInlineRe = new RegExp('(^|\\s)'+buckPat+'($|\\s)','i');
+  const doeInlineRe = new RegExp('(^|\\s)'+doePat+'($|\\s)','i');
+  const fieldLineRe = new RegExp('\\b(?:'+EVERBREED_FIELD_LABELS.map(pdfFuzzyLabel).join('|')+')\\s*:','i');
   const nameParts=[]; const fieldLines=[]; let sex=null;
   lines.forEach(line=>{
-    const t=line.trim(); if(!t) return;
-    if(/^(BUCK|DOE)$/i.test(t)){ sex = /^BUCK$/i.test(t)?'buck':'doe'; return; }
-    if(/\b(ID|DOB|COLOR|BREED|WEIGHT|GC\s*#|GEN)\s*:/i.test(t)) fieldLines.push(t);
+    let t=line.trim(); if(!t) return;
+    // The BUCK/DOE badge sometimes shares a line with the name rather
+    // than standing alone, so it's stripped out wherever it appears
+    // instead of only matching a line that's just the badge.
+    let m = t.match(buckInlineRe);
+    if(m){ sex='buck'; t=t.replace(m[0],' ').replace(/\s+/g,' ').trim(); }
+    else{
+      m = t.match(doeInlineRe);
+      if(m){ sex='doe'; t=t.replace(m[0],' ').replace(/\s+/g,' ').trim(); }
+    }
+    if(!t) return;
+    if(fieldLineRe.test(t)) fieldLines.push(t);
     else nameParts.push(t); // cattery prefix and/or given name, in reading order
   });
   const f = pdfEverbreedExtractFields(fieldLines.join(' '));
@@ -4721,10 +4826,10 @@ function pdfParseEverbreedBoxLines(lines, role){
   const weightMatch = weightRaw.match(/[\d.]+/); // strips a trailing " lbs"
   if(!sex) sex = role==='SELF' ? null : (PEDIGREE_MALE_ROLES.has(role) ? 'buck' : 'doe');
   return {
-    name: nameParts.join(' ').replace(/\s+/g,' ').trim(),
-    color: pdfDashClean(f['COLOR']),
-    breed: pdfDashClean(f['BREED']), // read per-box (mixed-breed pedigrees are possible)
-    earNumber: pdfDashClean(f['ID']),
+    name: pdfDefragmentText(nameParts.join(' ').replace(/\s+/g,' ').trim()),
+    color: pdfDefragmentText(pdfDashClean(f['COLOR'])),
+    breed: pdfDefragmentText(pdfDashClean(f['BREED'])), // read per-box (mixed-breed pedigrees are possible)
+    earNumber: pdfDefragmentText(pdfDashClean(f['ID'])),
     registrationNumber: '', // Everbreed's layout has no separate reg # field
     weight: weightMatch ? weightMatch[0] : '',
     legsWins: '', // no leg-count field in this layout
@@ -5098,6 +5203,8 @@ const authPhone = document.getElementById('authPhone');
 const authPhoneWrap = document.getElementById('authPhoneWrap');
 const authWebsite = document.getElementById('authWebsite');
 const authWebsiteWrap = document.getElementById('authWebsiteWrap');
+const authLocation = document.getElementById('authLocation');
+const authLocationWrap = document.getElementById('authLocationWrap');
 const authSubmit = document.getElementById('authSubmit');
 const authMessage = document.getElementById('authMessage');
 const authLoginTab = document.getElementById('authLoginTab');
@@ -5117,6 +5224,7 @@ function setAuthMode(mode){
   authRabbitryWrap.style.display=signup?'block':'none';
   authPhoneWrap.style.display=signup?'block':'none';
   authWebsiteWrap.style.display=signup?'block':'none';
+  authLocationWrap.style.display=signup?'block':'none';
   authFirstName.required=signup; authLastName.required=signup; authRabbitryName.required=signup; authPhone.required=signup;
   authSubmit.textContent=signup?'Create account':'Sign in';
   authForgot.style.display=signup?'none':'block';
@@ -5141,7 +5249,8 @@ authForm.onsubmit=async (e)=>{
         last_name: authLastName.value.trim(),
         rabbitry_name: authRabbitryName.value.trim(),
         phone: authPhone.value.trim(),
-        website: authWebsite.value.trim()
+        website: authWebsite.value.trim(),
+        location: authLocation.value.trim()
       }}});
       if(error) throw error;
       if(data.session){
