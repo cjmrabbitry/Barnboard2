@@ -110,7 +110,7 @@
   .btn-danger{background:transparent; color:var(--rust); border:1px solid var(--rust);}
   .btn-sm{padding:9px 13px; min-height:38px; font-size:12.5px;}
 
-  nav.bottom{ position:fixed; bottom:0; left:0; right:0; background:var(--navbar); display:grid; grid-template-columns:repeat(6,1fr); padding:7px 1px 9px; z-index:25; }
+  nav.bottom{ position:fixed; bottom:0; left:0; right:0; background:var(--navbar); display:grid; grid-template-columns:repeat(6,1fr); padding:7px 1px 9px; z-index:45; }
   nav.bottom button{ background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:2px 0; }
   nav.bottom svg{ width:19px; height:19px; stroke:var(--navbar-dim); fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
   nav.bottom svg text{ fill:var(--navbar-dim); }
@@ -1962,7 +1962,15 @@ function renderNav(){
   document.getElementById('nav').innerHTML = NAV.map(([k,l])=>
     `<button data-nav="${k}" class="${active===k?'on':''}"><svg viewBox="0 0 24 24">${ICONS[k]}</svg><span>${l}</span></button>`).join('');
   document.querySelectorAll('[data-nav]').forEach(b=>{
-    b.onclick = ()=>{ if(b.dataset.nav==='more') openMoreSheet(); else { currentTab=b.dataset.nav; render(); window.scrollTo(0,0); } };
+    b.onclick = ()=>{
+      if(b.dataset.nav==='more'){ openMoreSheet(); return; }
+      profileRabbitId = null;
+      document.getElementById('profileView').classList.remove('on');
+      searchQuery = '';
+      const inp = document.getElementById('searchInput'); if(inp) inp.value='';
+      document.getElementById('searchClear').style.display='none';
+      currentTab = b.dataset.nav; render(); window.scrollTo(0,0);
+    };
   });
 }
 
@@ -2911,11 +2919,12 @@ function openMergeSheet(){
     const d=rabbits.find(x=>x.id===document.getElementById('f-drop').value);
     if(!k||!d||k.id===d.id){ showToast('Pick two different rabbits'); return; }
     if(!armed){ armed=true; btn.textContent='Tap again to confirm merge'; return; }
-    ['breed','color','earNumber','weight','legsWins','sireName','damName','dob','notes','registrationNumber'].forEach(f=>{ if(!k[f]&&d[f]) k[f]=d[f]; });
+    ['breed','color','earNumber','weight','legsWins','sireName','damName','dob','notes','registrationNumber','gcNumber'].forEach(f=>{ if(!k[f]&&d[f]) k[f]=d[f]; });
     if(!k.alias && d.name!==k.name) k.alias=d.name;
     if((!k.weightLog||!k.weightLog.length) && d.weightLog && d.weightLog.length) k.weightLog=d.weightLog;
     if((!k.photos||!k.photos.length) && d.photos && d.photos.length) k.photos=d.photos;
     if(d.notesLog && d.notesLog.length) k.notesLog=(k.notesLog||[]).concat(d.notesLog);
+    if(d.wins && d.wins.length) k.wins=(k.wins||[]).concat(d.wins);
     if(!k.litterKits && d.litterKits){ k.litterKits=d.litterKits; k.litterBornDate=d.litterBornDate; k.litterDead=d.litterDead; k.weanDate=d.weanDate; k.sellDate=d.sellDate; }
     if(!k.lastLitterSummary && d.lastLitterSummary) k.lastLitterSummary=d.lastLitterSummary;
     if(isActive(k) && k.status==='open' && d.status==='pregnant'){ k.status='pregnant'; k.partner=d.partner; k.bredDate=d.bredDate; k.dueDate=d.dueDate; }
@@ -4820,21 +4829,36 @@ function downloadCSV(filename, csvText){
 
 const RABBIT_CSV_COLUMNS = ['id','name','sex','breed','color','earNumber','dob','weight','legsWins','registrationNumber','gcNumber',
   'sireName','damName','status','partner','bredDate','dueDate','litterBornDate','weanDate','sellDate','rebreedWeeks',
-  'notes','flag','alias','forSale','graduatedDate',
+  'notes','flag','alias','forSale','graduatedDate','wins',
   'sale_buyer','sale_price','sale_deposit','sale_depositDate','sale_pickupDate','sale_soldDate'];
+function encodeWinsForCsv(wins){
+  return (wins||[]).map(w=>[w.award,w.date,w.show].map(v=>String(v||'').replace(/[|;]/g,' ')).join('|')).join(';');
+}
+function decodeWinsFromCsv(str){
+  if(!str) return [];
+  return str.split(';').filter(Boolean).map(chunk=>{
+    const [award,date,show] = chunk.split('|');
+    return { id:uid(), award:award||'', date:date||'', show:show||'' };
+  });
+}
 function rabbitToCsvRow(r){
   const s=r.sale||{};
   return { id:r.id, name:r.name, sex:r.sex, breed:r.breed||'', color:r.color||'', earNumber:r.earNumber||'', dob:r.dob||'',
     weight:r.weight||'', legsWins:r.legsWins||'', registrationNumber:r.registrationNumber||'', gcNumber:r.gcNumber||'', sireName:r.sireName||'', damName:r.damName||'',
     status:r.status, partner:r.partner||'', bredDate:r.bredDate||'', dueDate:r.dueDate||'', litterBornDate:r.litterBornDate||'',
     weanDate:r.weanDate||'', sellDate:r.sellDate||'', rebreedWeeks:r.rebreedWeeks||'', notes:r.notes||'', flag:r.flag||'', alias:r.alias||'',
-    forSale:r.forSale?'yes':'no', graduatedDate:r.graduatedDate||'',
+    forSale:r.forSale?'yes':'no', graduatedDate:r.graduatedDate||'', wins:encodeWinsForCsv(r.wins),
     sale_buyer:s.buyer||'', sale_price:s.price||'', sale_deposit:s.deposit||'', sale_depositDate:s.depositDate||'',
     sale_pickupDate:s.pickupDate||'', sale_soldDate:s.soldDate||'' };
 }
 function csvRowToRabbit(row, existing){
   const base = existing || blankRabbit({});
   const hasSale = row.sale_buyer||row.sale_price||row.sale_pickupDate||row.sale_soldDate;
+  const incomingWins = decodeWinsFromCsv(row.wins);
+  const existingWins = base.wins||[];
+  const sig = w => [w.award,w.date,w.show].join('|');
+  const existingSigs = new Set(existingWins.map(sig));
+  const mergedWins = existingWins.concat(incomingWins.filter(w=>!existingSigs.has(sig(w))));
   return Object.assign(base, {
     id: row.id || base.id, name: row.name, sex: row.sex||'doe', breed: row.breed, color: row.color,
     earNumber: row.earNumber, dob: row.dob||null, weight: row.weight, legsWins: row.legsWins,
@@ -4842,7 +4866,7 @@ function csvRowToRabbit(row, existing){
     status: row.status||'open', partner: row.partner||null, bredDate: row.bredDate||null, dueDate: row.dueDate||null,
     litterBornDate: row.litterBornDate||null, weanDate: row.weanDate||null, sellDate: row.sellDate||null,
     rebreedWeeks: Number(row.rebreedWeeks)||3, notes: row.notes||'', flag: row.flag||'', alias: row.alias||'',
-    forSale: row.forSale==='yes', graduatedDate: row.graduatedDate||null,
+    forSale: row.forSale==='yes', graduatedDate: row.graduatedDate||null, wins: mergedWins,
     sale: hasSale ? { buyer:row.sale_buyer||'', price:row.sale_price||'', deposit:row.sale_deposit||'', depositDate:row.sale_depositDate||'',
       pickupDate:row.sale_pickupDate||'', soldDate:row.sale_soldDate||'' } : base.sale
   });
