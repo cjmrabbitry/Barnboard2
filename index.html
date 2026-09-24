@@ -3577,12 +3577,33 @@ function pedigreeAccentColorFor(theme, customAccent, sex){
 }
 function pedigreeSpaceEvenly(boxHeights, availH){
   const total = boxHeights.reduce((a,b)=>a+b,0);
-  const gap = Math.max((availH - total) / (boxHeights.length + 1), 4);
+  const rawGap = (availH - total) / (boxHeights.length + 1);
+  const gap = total <= availH ? Math.max(rawGap, 4) : Math.max(rawGap, 0);
   let y = gap; const ys=[];
   for(const h of boxHeights){ ys.push(y); y += h + gap; }
   return ys;
 }
-function pedigreeWinLineText(w){ return [w.award, w.date?fmtDate(w.date):'', w.show].filter(Boolean).join('  \u00b7  '); }
+const AWARD_ABBREVIATIONS = [
+  [/^best in show$/i, 'BIS'],
+  [/^reserve best in show$/i, 'RBIS'],
+  [/^best of breed$/i, 'BOB'],
+  [/^best opposite sex$/i, 'BOS'],
+  [/^best of variety$/i, 'BOV'],
+  [/^best opposite variety$/i, 'BOV Opp'],
+  [/^grand champion leg$/i, 'GC Leg'],
+  [/^grand champion$/i, 'GC'],
+];
+function abbreviateAward(text){
+  if(!text) return text;
+  for(const [pattern,short] of AWARD_ABBREVIATIONS){ if(pattern.test(text.trim())) return short; }
+  return text;
+}
+function fmtDateShort(d){
+  if(!d) return '';
+  const dt = new Date(d+'T00:00:00');
+  return `${dt.getMonth()+1}/${dt.getDate()}/${dt.getFullYear()}`;
+}
+function pedigreeWinLineText(w){ return [abbreviateAward(w.award), w.date?fmtDateShort(w.date):'', w.show].filter(Boolean).join('  \u00b7  '); }
 function pedigreeFieldLine(item, fields, includeGC){
   const parts=[];
   if(fields.ear && item.earNumber) parts.push(item.earNumber);
@@ -3648,6 +3669,21 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     if(cur) lines.push(cur);
     return lines;
   }
+  function wrapTextBalanced(text, font, size, maxW){
+    const words = text.split(' ');
+    if(words.length<=1) return [text];
+    const greedy = wrapText(text, font, size, maxW);
+    if(greedy.length!==2) return greedy;
+    let bestSplit=1, bestMax=Infinity, bestDiff=Infinity;
+    for(let i=1;i<words.length;i++){
+      const w1 = textWidth(words.slice(0,i).join(' '), font, size);
+      const w2 = textWidth(words.slice(i).join(' '), font, size);
+      if(w1>maxW || w2>maxW) continue;
+      const maxLine = Math.max(w1,w2), diff = Math.abs(w1-w2);
+      if(maxLine<bestMax || (maxLine===bestMax && diff<bestDiff)){ bestMax=maxLine; bestDiff=diff; bestSplit=i; }
+    }
+    return [words.slice(0,bestSplit).join(' '), words.slice(bestSplit).join(' ')];
+  }
 
   const pedigreeSettings2 = overrides.settings || pedigreeSettings;
   const theme = overrides.theme || pedigreeSettings2.printTheme || 'sex';
@@ -3662,10 +3698,28 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   // header
   let hx = M;
   const headerTopY = H-M;
-  const headerBottomY = headerTopY - 44;
+  const rabbitryName = myProfileForPdf.rabbitry_name || '';
+  const rightLines = [['Breed', r.breed||'']];
+  if(fields.dob!==false) rightLines.push(['Date of Birth', r.dob?fmtDate(r.dob):'']);
+  rightLines.push(['Sex', r.sex==='doe'?'Doe':'Buck']);
+
+  let headerBottomY = headerTopY - 44;
   if(usingBackground){
-    page.drawRectangle({ x:M-8, y:headerBottomY-4, width:W-2*(M-8), height:(H-M+6)-(headerBottomY-4), color:white, opacity:0.94 });
+    const nameW = textWidth(rabbitryName||'Rabbitry', fonts.serifBold, 19);
+    const taglineW = pedigreeSettings2.tagline ? textWidth(pedigreeSettings2.tagline, fonts.mono, 7) : 0;
+    const logoBlockW = pedigreeSettings2.logoDataUrl ? 52 : 0;
+    const leftBoxW = logoBlockW + Math.max(nameW,taglineW) + 24;
+    const leftBoxH = 58;
+    const rightLineTexts = rightLines.map(([label,val])=>`${label}: ${val}`);
+    const rightBoxW = Math.max(...rightLineTexts.map(t=>textWidth(t,fonts.sans,8.5))) + 20;
+    const rightBoxH = rightLines.length*13 + 14;
+    const maxBoxH = Math.max(leftBoxH, rightBoxH);
+    headerBottomY = (headerTopY - maxBoxH + 8) - 12;
+
+    page.drawRectangle({ x:M-10, y:headerTopY-leftBoxH+8, width:leftBoxW, height:leftBoxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
+    page.drawRectangle({ x:W-M-rightBoxW+10, y:headerTopY-rightBoxH+8, width:rightBoxW, height:rightBoxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
   }
+
   let logoImg = null;
   if(pedigreeSettings2.logoDataUrl){
     const bytes = dataUrlToBytes(pedigreeSettings2.logoDataUrl);
@@ -3677,14 +3731,10 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     page.drawImage(logoImg, { x:hx, y: headerTopY-42+(42-h)/2, width:w, height:h });
     hx += logoSize+10;
   }
-  const rabbitryName = myProfileForPdf.rabbitry_name || '';
   drawText(rabbitryName || 'Rabbitry', hx, headerTopY, fonts.serifBold, 19, black);
   if(pedigreeSettings2.tagline) drawText(pedigreeSettings2.tagline, hx, headerTopY-22, fonts.mono, 7, accent);
 
   const rightX = W-M; let ry = headerTopY;
-  const rightLines = [['Breed', r.breed||'']];
-  if(fields.dob!==false) rightLines.push(['Date of Birth', r.dob?fmtDate(r.dob):'']);
-  rightLines.push(['Sex', r.sex==='doe'?'Doe':'Buck']);
   rightLines.forEach(([label,val])=>{
     const t = `${label}: ${val}`, w=textWidth(t,fonts.sans,8.5);
     drawText(t, rightX-w, ry, fonts.sans, 8.5, gray); ry -= 13;
@@ -3699,33 +3749,36 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
 
   if(usingBackground){
     const boxW = 240, boxX = W-M-boxW, contentW = boxW-20;
-    const contactLinesW = contactLine ? wrapText(contactLine, fonts.sans, 7, contentW) : [];
-    const certLinesW = pedigreeSettings2.hasCertification ? wrapText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', fonts.serifItalic, 8, contentW) : [];
+    const contactLinesW = contactLine ? wrapTextBalanced(contactLine, fonts.sans, 7, contentW) : [];
+    const certLinesW = pedigreeSettings2.hasCertification ? wrapTextBalanced('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', fonts.serifItalic, 8, contentW) : [];
     const hasSigRow = pedigreeSettings2.hasCertification;
     let boxH = 0;
     if(contactLinesW.length || certLinesW.length){
       boxH = 14;
       if(contactLinesW.length) boxH += contactLinesW.length*9 + 8;
       if(certLinesW.length) boxH += certLinesW.length*10 + 16;
-      if(hasSigRow) boxH += 9 + 18 + 9;
+      if(hasSigRow) boxH += 10 + 20 + 10;
       boxH += 12;
     }
     footerH = boxH; footerTopY = M+boxH;
     if(boxH>0){
-      page.drawRectangle({ x:boxX, y:M, width:boxW, height:boxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.9 });
+      page.drawRectangle({ x:boxX, y:M, width:boxW, height:boxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
       let cy = M+boxH-14;
       contactLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.sans, 7, gray); cy -= 9; });
       if(contactLinesW.length) cy -= 8;
       certLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.serifItalic, 8, rgb(0.2,0.2,0.2)); cy -= 10; });
       if(certLinesW.length) cy -= 16;
       if(hasSigRow){
-        const sigLabelW = textWidth('Signature:', fonts.sans, 7.5);
-        drawText('Signature:', boxX+10, cy, fonts.sans, 7.5, gray);
-        page.drawLine({start:{x:boxX+10+sigLabelW+5,y:cy-2},end:{x:boxX+boxW-10,y:cy-2},thickness:0.6,color:rgb(0.6,0.6,0.6)});
-        cy -= 18;
-        const dateLabelW = textWidth('Date:', fonts.sans, 7.5);
-        drawText('Date:', boxX+10, cy, fonts.sans, 7.5, gray);
-        page.drawLine({start:{x:boxX+10+dateLabelW+5,y:cy-2},end:{x:boxX+boxW-10,y:cy-2},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        const sigSize = 7.5;
+        const sigLabelW = textWidth('Signature:', fonts.sans, sigSize);
+        const sigBaseline = cy - sigSize*0.82;
+        drawText('Signature:', boxX+10, cy, fonts.sans, sigSize, gray);
+        page.drawLine({start:{x:boxX+10+sigLabelW+5,y:sigBaseline},end:{x:boxX+boxW-10,y:sigBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        cy -= 20;
+        const dateLabelW = textWidth('Date:', fonts.sans, sigSize);
+        const dateBaseline = cy - sigSize*0.82;
+        drawText('Date:', boxX+10, cy, fonts.sans, sigSize, gray);
+        page.drawLine({start:{x:boxX+10+dateLabelW+5,y:dateBaseline},end:{x:boxX+boxW-10,y:dateBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
       }
     }
   } else {
