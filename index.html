@@ -2035,7 +2035,7 @@ function cardHTML(r, forceUrgent, origin){
   else if(isArchived(r)) a=`<button class="btn btn-primary" data-act="unarchive" data-id="${r.id}">Return to roster</button>`;
   else if(r.sex==='doe') a=`<button class="btn btn-primary" data-act="bred" data-id="${r.id}">Record breeding</button><button class="btn btn-secondary btn-sm" data-act="plan" data-id="${r.id}">Plan a breeding</button>`;
   else a='';
-  a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="wins" data-id="${r.id}">Wins</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
+  a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button><button class="btn btn-secondary btn-sm" data-act="wins" data-id="${r.id}">Wins</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
   return `<div class="card ${urgent?'urgent':''}" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div>
     <div class="card-detail">${detail}</div>${flag}<div class="card-actions">${a}</div></div>`;
 }
@@ -2056,7 +2056,7 @@ function buckCardHTML(r){
   return `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div></div>
     <div class="card-detail">${txt}</div>
     <div class="card-actions">
-      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button>
+      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button>
       <button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button>
       <button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>
     </div></div>`;
@@ -2072,7 +2072,7 @@ function juniorCardHTML(r){
     <div class="card-detail">${d}</div>${r.flag?`<div class="flag">${esc(r.flag)}</div>`:''}
     <div class="card-actions">
       <button class="btn btn-secondary btn-sm" data-act="graduate" data-id="${r.id}">Move to roster</button>
-      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button>
+      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button>
       <button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>
     </div></div>`;
 }
@@ -2124,7 +2124,7 @@ function ancestorCardHTML(r){
   const b=[]; if(r.breed)b.push(r.breed); if(r.color)b.push(r.color); if(r.earNumber)b.push('Ear# '+r.earNumber); if(r.weight)b.push(r.weight+' lbs'); if(r.legsWins)b.push(r.legsWins);
   return `<div class="card"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${esc(b.join(' · '))||'No details yet'}</div></div></div>
     ${(r.sireName||r.damName)?`<div class="card-detail">Sire: ${esc(r.sireName||'?')} &middot; Dam: ${esc(r.damName||'?')}</div>`:''}
-    <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit details</button></div></div>`;
+    <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit details</button></div></div>`;
 }
 function plannedCardHTML(p){
   const doe=rabbits.find(r=>r.id===p.doeId), buck=rabbits.find(r=>r.id===p.buckId);
@@ -2692,7 +2692,7 @@ function attachCardEvents(){
       else if(act==='graduate'){ r.status = r.sex==='doe'?'open':'available'; saveData(); render(); showToast(r.name+' moved to the main roster'); }
       else if(act==='unarchive') openUnarchive(r);
       else if(act==='edit') openEditSheet(r);
-      else if(act==='pedigree') openPedigreeSheet(r);
+      else if(act==='pedigree') downloadOfficialPedigreePDF(r);
       else if(act==='wins') openWinsSheet(r);
       else if(act==='history') openHistorySheet(r);
     };
@@ -3210,22 +3210,6 @@ function wirePedigreeTaps(container, r, back){
     openQuickNameSheet(ensureAncestor(parent.name), rel, back);
   });
 }
-function openPedigreeSheet(r){
-  const back=()=>openPedigreeSheet(r);
-  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
-    <h2>${esc(r.name)} — Pedigree</h2>
-    <div class="card-sub" style="margin-bottom:12px;">${subLine(r)}${r.dob?' &middot; b. '+fmtDate(r.dob):''}</div>
-    ${pedigreeTreeHTML(r)}
-    <div class="card-sub">Tap a name to edit it, or "+ Add name" to fill a blank spot.</div>
-    <div class="sheet-actions" style="flex-wrap:wrap;">
-      <button class="btn btn-secondary" onclick="closeSheet()">Close</button>
-      <button class="btn btn-primary" id="f-print">Print / Save PDF</button>
-      <button class="btn btn-primary" id="f-official-pdf" style="flex:1 1 100%;">Download Official Pedigree PDF</button>
-    </div>`);
-  wirePedigreeTaps(document.getElementById('sheet'), r, back);
-  document.getElementById('f-print').onclick=()=>openPrintOptionsSheet(r, back);
-  document.getElementById('f-official-pdf').onclick=()=>downloadOfficialPedigreePDF(r);
-}
 function openQuickNameSheet(parent, rel, back){
   const label = rel==='s'?'Sire':'Dam';
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
@@ -3395,24 +3379,6 @@ function printPedigreeAdvanced(r, orientation, detail){
   });
 }
 window.addEventListener('afterprint',()=>document.getElementById('printPedigree').classList.remove('active'));
-function openPrintOptionsSheet(r, back){
-  let orientation='landscape', detail='full';
-  const returnHome = ()=>{ closeSheet(); if(back) back(); };
-  openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
-    <h2>${esc(r.name)} — Print / Save PDF</h2>
-    <div class="field"><label>Orientation</label><div class="seg" id="f-orient">
-      <button data-v="landscape" class="on">Sideways (landscape)</button><button data-v="portrait">Long ways (portrait)</button></div></div>
-    <div class="field"><label>Detail level</label><div class="seg" id="f-detail">
-      <button data-v="full" class="on">Full pedigree</button><button data-v="simple">Simplified — name &amp; color only</button></div></div>
-    <div class="card-sub" style="margin-bottom:6px;">Always fits on a single page. In the print dialog, choose "Save as PDF" to download instead of printing.</div>
-    <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-go">Generate</button></div>`);
-  document.getElementById('f-cancel-x').onclick = returnHome;
-  document.getElementById('f-cancel').onclick = returnHome;
-  document.querySelectorAll('#f-orient button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-orient button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); orientation=b.dataset.v; });
-  document.querySelectorAll('#f-detail button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-detail button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); detail=b.dataset.v; });
-  document.getElementById('f-go').onclick=()=>{ returnHome(); printPedigreeAdvanced(r, orientation, detail); };
-}
-
 /* ============================================================
    OFFICIAL PEDIGREE PDF EXPORT (fillable template, imaging locked)
    ============================================================ */
@@ -3537,7 +3503,8 @@ function buildOfficialPedigreeValues(r){
 async function getMyPedigreeProfile(){
   if(localSandboxMode) return { pedigree_template:'generic' };
   try{
-    const {data} = await sb.from('profiles').select('pedigree_template, pedigree_background, first_name, last_name, rabbitry_name, phone, website, location').eq('id',currentUser.id).maybeSingle();
+    const targetId = (viewingAsCustomer && viewingAsCustomer.id) || currentUser.id;
+    const {data} = await sb.from('profiles').select('pedigree_template, pedigree_background, first_name, last_name, rabbitry_name, phone, website, location').eq('id',targetId).maybeSingle();
     return data || { pedigree_template:'generic' };
   }catch(e){ return { pedigree_template:'generic' }; }
 }
@@ -3731,21 +3698,40 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   const contactLine = contactParts.join('  \u00b7  ');
   const footerH = pedigreeSettings2.hasCertification ? 74 : (contactLine? 16:0);
   const footerTopY = M+footerH;
+  function drawRightAlignedText(text, rightX, yTop, font, size, color){ drawText(text, rightX-textWidth(text,font,size), yTop, font, size, color); }
   if(!usingBackground && footerH>0) page.drawLine({ start:{x:M,y:footerTopY}, end:{x:W-M,y:footerTopY}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
   let fy = footerTopY-14;
-  if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
-  if(pedigreeSettings2.hasCertification){
-    drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
-    fy -= 26;
-    const sigSize = 8;
-    const sigW=140, dateW=70, gapW=30;
-    const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,sigSize)+textWidth('Date:',fonts.sans,sigSize)+12;
-    let lx = W/2 - totalW/2;
-    const baseline = fy - sigSize*0.82;
-    drawText('Signature:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Signature:',fonts.sans,sigSize)+6;
-    page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
-    drawText('Date:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Date:',fonts.sans,sigSize)+6;
-    page.drawLine({start:{x:lx,y:baseline},end:{x:lx+dateW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+  if(usingBackground){
+    const rightEdge = W-M;
+    if(contactLine){ drawRightAlignedText(contactLine, rightEdge, fy, fonts.sans, 7.5, gray); fy -= 16; }
+    if(pedigreeSettings2.hasCertification){
+      drawRightAlignedText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', rightEdge, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
+      fy -= 26;
+      const sigSize = 8;
+      const sigW=140, dateW=70, gapW=30;
+      const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,sigSize)+textWidth('Date:',fonts.sans,sigSize)+12;
+      let lx = rightEdge - totalW;
+      const baseline = fy - sigSize*0.82;
+      drawText('Signature:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Signature:',fonts.sans,sigSize)+6;
+      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
+      drawText('Date:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Date:',fonts.sans,sigSize)+6;
+      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+dateW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+    }
+  } else {
+    if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
+    if(pedigreeSettings2.hasCertification){
+      drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
+      fy -= 26;
+      const sigSize = 8;
+      const sigW=140, dateW=70, gapW=30;
+      const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,sigSize)+textWidth('Date:',fonts.sans,sigSize)+12;
+      let lx = W/2 - totalW/2;
+      const baseline = fy - sigSize*0.82;
+      drawText('Signature:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Signature:',fonts.sans,sigSize)+6;
+      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
+      drawText('Date:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Date:',fonts.sans,sigSize)+6;
+      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+dateW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+    }
   }
 
   // tree
@@ -4523,7 +4509,7 @@ function renderForSale(main){
       return `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div>
         ${detail?`<div class="card-detail">${detail}</div>`:''}
         <div class="card-actions">
-          <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button>
+          <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button>
           <button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>
         </div></div>`;
     }).join('');
@@ -5070,7 +5056,7 @@ function renderProfile(){
   if(profileTab==='overview') body.innerHTML = overviewTabHTML(r);
   else if(profileTab==='breeding') body.innerHTML = breedingTabHTML(r);
   else if(profileTab==='litters') body.innerHTML = littersTabHTML(r);
-  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPrint">Print / Save PDF</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Download Official Pedigree PDF</button></div>`;
+  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Official Pedigree</button></div>`;
   else if(profileTab==='photos') body.innerHTML = photosTabHTML(r);
   else if(profileTab==='notes') body.innerHTML = notesTabHTML(r);
   wireProfileTab(r);
@@ -5166,7 +5152,6 @@ function wireProfileTab(r){
   }
   if(profileTab==='pedigree'){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
-    const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>openPrintOptionsSheet(r, renderProfile);
     const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
   }
   if(profileTab==='litters'){ attachCardEvents(); }
