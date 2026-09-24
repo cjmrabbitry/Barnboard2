@@ -3702,23 +3702,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   const rightLines = [['Breed', r.breed||'']];
   if(fields.dob!==false) rightLines.push(['Date of Birth', r.dob?fmtDate(r.dob):'']);
   rightLines.push(['Sex', r.sex==='doe'?'Doe':'Buck']);
-
-  let headerBottomY = headerTopY - 44;
-  if(usingBackground){
-    const nameW = textWidth(rabbitryName||'Rabbitry', fonts.serifBold, 19);
-    const taglineW = pedigreeSettings2.tagline ? textWidth(pedigreeSettings2.tagline, fonts.mono, 7) : 0;
-    const logoBlockW = pedigreeSettings2.logoDataUrl ? 52 : 0;
-    const leftBoxW = logoBlockW + Math.max(nameW,taglineW) + 24;
-    const leftBoxH = 58;
-    const rightLineTexts = rightLines.map(([label,val])=>`${label}: ${val}`);
-    const rightBoxW = Math.max(...rightLineTexts.map(t=>textWidth(t,fonts.sans,8.5))) + 20;
-    const rightBoxH = rightLines.length*13 + 14;
-    const maxBoxH = Math.max(leftBoxH, rightBoxH);
-    headerBottomY = (headerTopY - maxBoxH + 8) - 12;
-
-    page.drawRectangle({ x:M-10, y:headerTopY-leftBoxH+8, width:leftBoxW, height:leftBoxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
-    page.drawRectangle({ x:W-M-rightBoxW+10, y:headerTopY-rightBoxH+8, width:rightBoxW, height:rightBoxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
-  }
+  const headerBottomY = headerTopY - 44;
 
   let logoImg = null;
   if(pedigreeSettings2.logoDataUrl){
@@ -3745,59 +3729,23 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
   const contactParts = [breederName, myProfileForPdf.website, myProfileForPdf.phone, pedigreeSettings2.social].map(v=>sanitizeForPdf(v||'')).filter(Boolean);
   const contactLine = contactParts.join('  \u00b7  ');
-  let footerH, footerTopY;
-
-  if(usingBackground){
-    const boxW = 200, boxX = W-M-boxW, contentW = boxW-16;
-    const contactLinesW = contactLine ? wrapTextBalanced(contactLine, fonts.sans, 6, contentW) : [];
-    const certLinesW = pedigreeSettings2.hasCertification ? wrapTextBalanced('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', fonts.serifItalic, 6.5, contentW) : [];
-    const hasSigRow = pedigreeSettings2.hasCertification;
-    let boxH = 0;
-    if(contactLinesW.length || certLinesW.length){
-      boxH = 8;
-      if(contactLinesW.length) boxH += contactLinesW.length*7 + 4;
-      if(certLinesW.length) boxH += certLinesW.length*7.5 + 6;
-      if(hasSigRow) boxH += 8 + 10 + 8;
-      boxH += 6;
-    }
-    footerH = boxH; footerTopY = M+boxH;
-    if(boxH>0){
-      page.drawRectangle({ x:boxX, y:M, width:boxW, height:boxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
-      let cy = M+boxH-8;
-      contactLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.sans, 6, gray); cy -= 7; });
-      if(contactLinesW.length) cy -= 4;
-      certLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.serifItalic, 6.5, rgb(0.2,0.2,0.2)); cy -= 7.5; });
-      if(certLinesW.length) cy -= 6;
-      if(hasSigRow){
-        const sigSize = 6.5;
-        const sigLabelW = textWidth('Signature:', fonts.sans, sigSize);
-        const sigBaseline = cy - sigSize*0.82;
-        drawText('Signature:', boxX+8, cy, fonts.sans, sigSize, gray);
-        page.drawLine({start:{x:boxX+8+sigLabelW+4,y:sigBaseline},end:{x:boxX+boxW-8,y:sigBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
-        cy -= 10;
-        const dateLabelW = textWidth('Date:', fonts.sans, sigSize);
-        const dateBaseline = cy - sigSize*0.82;
-        drawText('Date:', boxX+8, cy, fonts.sans, sigSize, gray);
-        page.drawLine({start:{x:boxX+8+dateLabelW+4,y:dateBaseline},end:{x:boxX+boxW-8,y:dateBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
-      }
-    }
-  } else {
-    footerH = pedigreeSettings2.hasCertification ? 74 : (contactLine? 16:0);
-    footerTopY = M+footerH;
-    if(footerH>0) page.drawLine({ start:{x:M,y:footerTopY}, end:{x:W-M,y:footerTopY}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
-    let fy = footerTopY-14;
-    if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
-    if(pedigreeSettings2.hasCertification){
-      drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
-      fy -= 30;
-      const sigW=140, dateW=70, gapW=30;
-      const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,8)+textWidth('Date:',fonts.sans,8)+12;
-      let lx = W/2 - totalW/2;
-      drawText('Signature:', lx, fy, fonts.sans, 8, gray); lx += textWidth('Signature:',fonts.sans,8)+6;
-      page.drawLine({start:{x:lx,y:fy-2},end:{x:lx+sigW,y:fy-2},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
-      drawText('Date:', lx, fy, fonts.sans, 8, gray); lx += textWidth('Date:',fonts.sans,8)+6;
-      page.drawLine({start:{x:lx,y:fy-2},end:{x:lx+dateW,y:fy-2},thickness:0.75,color:rgb(0.6,0.6,0.6)});
-    }
+  const footerH = pedigreeSettings2.hasCertification ? 74 : (contactLine? 16:0);
+  const footerTopY = M+footerH;
+  if(!usingBackground && footerH>0) page.drawLine({ start:{x:M,y:footerTopY}, end:{x:W-M,y:footerTopY}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
+  let fy = footerTopY-14;
+  if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
+  if(pedigreeSettings2.hasCertification){
+    drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
+    fy -= 26;
+    const sigSize = 8;
+    const sigW=140, dateW=70, gapW=30;
+    const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,sigSize)+textWidth('Date:',fonts.sans,sigSize)+12;
+    let lx = W/2 - totalW/2;
+    const baseline = fy - sigSize*0.82;
+    drawText('Signature:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Signature:',fonts.sans,sigSize)+6;
+    page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
+    drawText('Date:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Date:',fonts.sans,sigSize)+6;
+    page.drawLine({start:{x:lx,y:baseline},end:{x:lx+dateW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
   }
 
   // tree
