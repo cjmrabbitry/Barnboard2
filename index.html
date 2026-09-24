@@ -371,10 +371,10 @@
     body{ padding-bottom:0; }
     header.top{
       position:fixed; top:0; left:0; bottom:0; width:230px; z-index:20;
-      flex-direction:column; align-items:flex-start; gap:18px;
+      flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:18px;
       padding:22px 18px 18px; overflow-y:auto;
     }
-    header.top .theme-btn{ margin-top:auto; }
+    header.top .theme-btn{ margin-top:0; }
     nav.bottom{
       position:fixed; top:110px; left:0; bottom:0; width:230px; z-index:20;
       display:flex; flex-direction:column; gap:2px;
@@ -1954,7 +1954,7 @@ const ICONS = {
   money:'<circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M15 9.3c0-1.5-1.3-2.6-3-2.6s-3 1-3 2.4c0 1.6 1.5 2 3 2.4c1.5.4 3 .9 3 2.5c0 1.4-1.3 2.5-3 2.5s-3-1.1-3-2.6"/>',
   more:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>'
 };
-const NAV = [['home','Home'],['rabbits','Herd'],['litters','Nursery'],['calendar','Calendar'],['money','Money'],['more','More']];
+const NAV = [['home','Home'],['rabbits','Herd'],['litters','Nursery'],['calendar','Calendar'],['money','Financials'],['more','More']];
 
 function renderNav(){
   const activeMap = {does:'rabbits', bucks:'rabbits', juniors:'rabbits', ancestors:'more', archive:'more', backup:'more', merge:'more', search:'more', planned:'more', forsale:'more'};
@@ -2025,7 +2025,7 @@ function cardHTML(r, forceUrgent, origin){
   if(r.status==='pregnant') a=`<button class="btn btn-primary" data-act="kindled" data-id="${r.id}">Kindled</button><button class="btn btn-danger" data-act="lost" data-id="${r.id}">Litter lost</button>`;
   else if(r.status==='nursing') a=`${canRebred(r)?`<button class="btn btn-primary" data-act="rebred" data-id="${r.id}">Rebred</button>`:`<button class="btn btn-secondary btn-sm" disabled style="opacity:.5;">Rebreed available ${fmtDate(addDays(r.litterBornDate,r.rebreedWeeks*7))}</button>`}<button class="btn btn-secondary" data-act="wean" data-id="${r.id}">Weaned</button>`;
   else if(isArchived(r)) a=`<button class="btn btn-primary" data-act="unarchive" data-id="${r.id}">Return to roster</button>`;
-  else if(r.sex==='doe') a=`<button class="btn btn-primary" data-act="bred" data-id="${r.id}">Mark bred</button><button class="btn btn-secondary btn-sm" data-act="plan" data-id="${r.id}">Plan a breeding</button>`;
+  else if(r.sex==='doe') a=`<button class="btn btn-primary" data-act="bred" data-id="${r.id}">Record breeding</button><button class="btn btn-secondary btn-sm" data-act="plan" data-id="${r.id}">Plan a breeding</button>`;
   else a='';
   a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="wins" data-id="${r.id}">Wins</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
   return `<div class="card ${urgent?'urgent':''}" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div>
@@ -2583,7 +2583,9 @@ function attachSuggest(input, getOptions){
   const box = document.createElement('div');
   box.className = 'suggest-box';
   input.insertAdjacentElement('afterend', box);
+  let suppressNext = false;
   function render(){
+    if(suppressNext){ suppressNext=false; box.style.display='none'; box.innerHTML=''; return; }
     const q = input.value.trim().toLowerCase();
     const seen = new Set();
     const opts = getOptions().filter(Boolean).filter(o=>{
@@ -2595,6 +2597,7 @@ function attachSuggest(input, getOptions){
     box.querySelectorAll('.suggest-item').forEach(btn=>{
       btn.addEventListener('mousedown', e=>e.preventDefault());
       btn.addEventListener('click', ()=>{
+        suppressNext = true;
         input.value = btn.textContent; box.style.display='none'; box.innerHTML='';
         input.dispatchEvent(new Event('input', {bubbles:true}));
         input.dispatchEvent(new Event('change', {bubbles:true}));
@@ -2951,7 +2954,7 @@ function openEditSheet(r, origin){
     </div>
     <div class="row2">
       <div class="field"><label>GC #</label><input id="f-gc" value="${esc(r.gcNumber||'')}"></div>
-      <div class="field"><label>Legs / Wins</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
+      <div class="field"><label>Legs</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
     </div>
     <div class="row2">
       <div class="field"><label>Sire</label><input id="f-sire" value="${esc(r.sireName||'')}"></div>
@@ -3038,6 +3041,10 @@ function openAddSheet(){
       <div class="field"><label>Breed</label><input id="f-breed" list="breed-options" placeholder="Start typing…">${breedDatalistHTML()}</div>
       <div class="field"><label>Color / Variety</label><input id="f-color"></div>
     </div>
+    <div class="row2">
+      <div class="field"><label>Ear #</label><input id="f-ear"></div>
+      <div class="field"><label>Weight (lbs)</label><input id="f-weight"></div>
+    </div>
     <div class="field"><label>Date of birth</label><input type="text" inputmode="numeric" id="f-dob" placeholder="MM/DD/YYYY"></div>
     <div class="field"><label>Status</label><select id="f-status">
         <option value="open">Open / available</option><option value="growing">Junior (growing)</option>
@@ -3073,7 +3080,8 @@ function commitAdd(name, sex){
   if(sex==='buck'&&status==='open') status='available';
   const sire=document.getElementById('f-sire').value.trim(), dam=document.getElementById('f-dam').value.trim();
   rabbits.push(blankRabbit({ name, sex, status, breed:document.getElementById('f-breed').value,
-    color:document.getElementById('f-color').value, dob:csvParseDate(document.getElementById('f-dob').value)||null,
+    color:document.getElementById('f-color').value, earNumber:document.getElementById('f-ear').value,
+    weight:document.getElementById('f-weight').value, dob:csvParseDate(document.getElementById('f-dob').value)||null,
     sireName:sire, damName:dam }));
   if(sire) ensureAncestor(sire,'buck');
   if(dam) ensureAncestor(dam,'doe');
@@ -3146,7 +3154,7 @@ function openAncestorSheet(anc, origin){
       <div class="field"><label>Weight (lbs)</label><input id="f-aweight" value="${esc(anc.weight||'')}"></div>
     </div>
     <div class="field"><label>Color / Variety</label><input id="f-acolor" value="${esc(anc.color||'')}"></div>
-    <div class="field"><label>Legs / Wins</label><input id="f-alegs" value="${esc(anc.legsWins||'')}"></div>
+    <div class="field"><label>Legs</label><input id="f-alegs" value="${esc(anc.legsWins||'')}"></div>
     <div class="field"><label>Registration #</label><input id="f-areg" value="${esc(anc.registrationNumber||'')}"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-asave">Save</button></div>
     <div class="sheet-actions"><button class="btn btn-danger" id="f-adelete" style="flex:1;">Delete</button></div>`);
@@ -3219,7 +3227,7 @@ function openQuickNameSheet(parent, rel, back){
       <div class="field"><label>Weight (lbs)</label><input id="f-qweight"></div>
     </div>
     <div class="field"><label>Color / Variety</label><input id="f-qcolor"></div>
-    <div class="field"><label>Legs / Wins</label><input id="f-qlegs"></div>
+    <div class="field"><label>Legs</label><input id="f-qlegs"></div>
     <div class="field"><label>Registration #</label><input id="f-qreg"></div>
     <div class="card-sub" id="f-qnote" style="display:none;"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
@@ -3272,12 +3280,12 @@ function ppBoxFieldsFull(n){
     <div class="pp-line"><b>Ear #:</b> ${esc(n.earNumber||'')}</div>
     <div class="pp-line"><b>Color:</b> ${esc(n.color||'')}</div>
     <div class="pp-line"><b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
-    <div class="pp-line"><b>Legs (wins):</b> ${esc(n.legsWins||'')}</div>`;
+    <div class="pp-line"><b>Legs:</b> ${esc(n.legsWins||'')}</div>`;
 }
 function ppBoxFieldsCompact(n){
   return `<div class="pp-line-compact"><b>Name:</b> ${esc(n.name||'')} &nbsp; <b>Ear #:</b> ${esc(n.earNumber||'')}</div>
     <div class="pp-line-compact"><b>Color:</b> ${esc(n.color||'')} &nbsp; <b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
-    <div class="pp-line-compact"><b>Legs (wins):</b> ${esc(n.legsWins||'')}</div>`;
+    <div class="pp-line-compact"><b>Legs:</b> ${esc(n.legsWins||'')}</div>`;
 }
 function ppBoxFieldsSimple(n){
   return `<div class="pp-simple-box-name">${esc(n.name||'')}</div>
@@ -3620,7 +3628,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     return t+'\u2026';
   }
 
-  const pedigreeSettings2 = pedigreeSettings;
+  const pedigreeSettings2 = overrides.settings || pedigreeSettings;
   const theme = overrides.theme || pedigreeSettings2.printTheme || 'sex';
   const customAccentVal = overrides.customAccent || pedigreeSettings2.customAccent;
   const accentHex = pedigreeAccentColorFor(theme, customAccentVal, r.sex);
@@ -3666,7 +3674,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
   const contactParts = [breederName, myProfileForPdf.website, myProfileForPdf.phone, pedigreeSettings2.social].map(v=>sanitizeForPdf(v||'')).filter(Boolean);
   const contactLine = contactParts.join('  \u00b7  ');
-  const footerH = pedigreeSettings2.hasCertification ? 58 : (contactLine? 16:0);
+  const footerH = pedigreeSettings2.hasCertification ? 74 : (contactLine? 16:0);
   const footerTopY = M+footerH;
   if(usingBackground && footerH>0){
     page.drawRectangle({ x:M-8, y:M-6, width:W-2*(M-8), height:(footerTopY+6)-(M-6), color:white, opacity:0.94 });
@@ -3676,7 +3684,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
   if(pedigreeSettings2.hasCertification){
     drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
-    fy -= 18;
+    fy -= 30;
     const sigW=140, dateW=70, gapW=30;
     const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,8)+textWidth('Date:',fonts.sans,8)+12;
     let lx = W/2 - totalW/2;
@@ -3734,7 +3742,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     if(fields.color && anc.color) l.push(`Color: ${anc.color}`);
     if(fields.reg && anc.registrationNumber) l.push(`Reg #: ${anc.registrationNumber}`);
     if(includeGC && fields.gc && anc.gcNumber) l.push(`GC #: ${anc.gcNumber}`);
-    if(anc.legsWins) l.push(`Legs (Wins): ${anc.legsWins}`);
+    if(anc.legsWins) l.push(`Legs: ${anc.legsWins}`);
     return l;
   }
 
@@ -3763,7 +3771,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   ];
   const gpBoxes = gpDefs.map(({label,anc})=>{
     const line1 = anc ? pedigreeFieldLine(anc, fields, true) : '';
-    const lines = anc ? [anc.name, line1, anc.legsWins?`Legs (Wins): ${anc.legsWins}`:''].filter(Boolean) : ['\u2014'];
+    const lines = anc ? [anc.name, line1, anc.legsWins?`Legs: ${anc.legsWins}`:''].filter(Boolean) : ['\u2014'];
     const winLines = anc && anc.wins && anc.wins.length ? [pedigreeWinLineText(anc.wins[0])] : [];
     return { label, lines, winLines, h: computeBoxHeight('grand', lines.length, winLines.length, false) };
   });
@@ -3779,7 +3787,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     if(anc){
       if(fields.weight && anc.weight) parts.push(anc.weight+' lbs');
       if(fields.color && anc.color) parts.push(anc.color);
-      if(anc.legsWins) parts.push('L:'+anc.legsWins);
+      if(anc.legsWins) parts.push('Legs: '+anc.legsWins);
     }
     const lines = anc ? [anc.name, parts.join('  \u00b7  ')].filter(Boolean) : ['\u2014'];
     return { label:ggLabels[i], lines, h: computeBoxHeight('great', lines.length, 0, false) };
@@ -3809,45 +3817,164 @@ async function downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides){
    background on file: use it (the normal case), or skip it for this one
    download and pick from the full color range instead — nothing here is
    saved back to Pedigree settings. */
-function openPedigreeBackgroundChoiceSheet(r, myProfileForPdf){
-  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
-    <h2>Download pedigree \u2014 ${esc(r.name)}</h2>
-    <div class="field"><label>Background</label>
-      <div class="seg" id="bg-choice">
-        <button type="button" data-v="custom" class="on">Use custom background</button>
-        <button type="button" data-v="plain">Plain white</button>
+/* ---------------- LIVE PEDIGREE PREVIEW ----------------
+   Shown whenever "Download Official Pedigree PDF" is tapped for an
+   account on the dynamic renderer (generic template, or any custom
+   background). Every control edits a local draft and regenerates the
+   actual PDF into the embedded preview — nothing is saved until
+   "Save & download" is pressed. */
+function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
+  const draft = JSON.parse(JSON.stringify(pedigreeSettings));
+  let useBackgroundDraft = hasCustomBackground;
+  const fieldRows = [['dob','Date of birth'],['reg','Registration #'],['gc','GC #'],['ear','Ear #'],['color','Color'],['weight','Weight']];
+  let regenTimer = null, regenSeq = 0, lastBlobUrl = null;
+
+  function themeButtonsHTML(){
+    if(hasCustomBackground && useBackgroundDraft){
+      const t = draft.printTheme==='sex' ? 'mono' : draft.printTheme;
+      return `<button type="button" data-v="mono" class="${t==='mono'?'on':''}">Black</button>
+        <button type="button" data-v="custom" class="${t==='custom'?'on':''}">Custom color</button>`;
+    }
+    return `<button type="button" data-v="mono" class="${draft.printTheme==='mono'?'on':''}">Black &amp; white</button>
+      <button type="button" data-v="sex" class="${draft.printTheme==='sex'?'on':''}">Pink / blue by sex</button>
+      <button type="button" data-v="custom" class="${draft.printTheme==='custom'?'on':''}">Custom</button>`;
+  }
+
+  function renderSheet(){
+    openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+      <h2>${esc(r.name)} — Pedigree preview</h2>
+      <div style="border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; margin-bottom:6px; background:#6b6e70;">
+        <iframe id="ped-preview-frame" style="width:100%; height:320px; border:none; display:block; background:#fff;"></iframe>
       </div>
-    </div>
-    <div id="bg-plain-theme" style="display:none;">
-      <div class="field"><label>Print colors</label>
-        <div class="seg" id="bg-theme-seg">
-          <button type="button" data-v="mono">Black &amp; white</button>
-          <button type="button" data-v="sex" class="on">Pink / blue by sex</button>
-          <button type="button" data-v="custom">Custom</button>
+      <div id="ped-preview-status" class="card-sub" style="margin-bottom:12px; min-height:16px;">Loading preview&hellip;</div>
+      ${hasCustomBackground?`<div class="field"><label>Background</label>
+        <div class="seg" id="pp-bg-choice">
+          <button type="button" data-v="custom" class="${useBackgroundDraft?'on':''}">Use custom background</button>
+          <button type="button" data-v="plain" class="${useBackgroundDraft?'':'on'}">Plain white</button>
+        </div>
+      </div>`:''}
+      <div class="field"><label>Logo</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+          ${draft.logoDataUrl?`<img src="${draft.logoDataUrl}" style="width:40px; height:40px; object-fit:contain; border:1px solid var(--line-strong); border-radius:8px;">`:''}
+          <button type="button" class="btn btn-secondary btn-sm" id="pp-logo-btn">${draft.logoDataUrl?'Replace logo':'Upload logo'}</button>
+          ${draft.logoDataUrl?'<button type="button" class="btn btn-secondary btn-sm" id="pp-logo-remove">Remove</button>':''}
+        </div>
+        <input type="file" id="pp-logo-file" accept="image/*" style="display:none;">
+      </div>
+      <div class="field"><label>Tagline (optional)</label><input id="pp-tagline" value="${esc(draft.tagline||'')}"></div>
+      <div class="field"><label>Instagram / Facebook</label><input id="pp-social" value="${esc(draft.social||'')}"></div>
+      <div class="field"><label>Print colors</label><div class="seg" id="pp-theme">${themeButtonsHTML()}</div></div>
+      <div class="field" id="pp-customwrap" style="${draft.printTheme==='custom'?'':'display:none;'}"><label>Custom accent color</label><input type="color" id="pp-customcolor" value="${esc(draft.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
+      <div class="field"><label>Fields to print</label>
+        <div style="display:flex; flex-direction:column; gap:2px;">
+          ${fieldRows.map(([k,l])=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;"><input type="checkbox" id="pp-field-${k}" ${draft.fields[k]!==false?'checked':''} style="width:18px; height:18px;"> ${l}</label>`).join('')}
         </div>
       </div>
-      <div class="field" id="bg-customcolor-wrap" style="display:none;"><label>Custom accent color</label><input type="color" id="bg-customcolor" value="${esc(pedigreeSettings.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
-    </div>
-    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="bg-go">Download</button></div>`);
+      <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="pp-cert" ${draft.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
+      <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="pp-download">Save &amp; download</button></div>`);
+    wireEvents();
+    scheduleRegen(true);
+  }
 
-  document.querySelectorAll('#bg-choice button').forEach(b=>b.onclick=()=>{
-    document.querySelectorAll('#bg-choice button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-    document.getElementById('bg-plain-theme').style.display = b.dataset.v==='plain' ? '' : 'none';
-  });
-  document.querySelectorAll('#bg-theme-seg button').forEach(b=>b.onclick=()=>{
-    document.querySelectorAll('#bg-theme-seg button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-    document.getElementById('bg-customcolor-wrap').style.display = b.dataset.v==='custom' ? '' : 'none';
-  });
-  document.getElementById('bg-go').onclick = async ()=>{
-    const useBackground = document.querySelector('#bg-choice button.on').dataset.v==='custom';
-    const overrides = { useBackground };
-    if(!useBackground){
-      overrides.theme = document.querySelector('#bg-theme-seg button.on').dataset.v;
-      overrides.customAccent = document.getElementById('bg-customcolor').value;
+  function readDraftFromControls(){
+    draft.tagline = document.getElementById('pp-tagline').value.trim();
+    draft.social = document.getElementById('pp-social').value.trim();
+    draft.printTheme = document.querySelector('#pp-theme button.on').dataset.v;
+    draft.customAccent = document.getElementById('pp-customcolor').value;
+    draft.hasCertification = document.getElementById('pp-cert').checked;
+    draft.fields = {
+      dob: document.getElementById('pp-field-dob').checked,
+      reg: document.getElementById('pp-field-reg').checked,
+      gc: document.getElementById('pp-field-gc').checked,
+      ear: document.getElementById('pp-field-ear').checked,
+      color: document.getElementById('pp-field-color').checked,
+      weight: document.getElementById('pp-field-weight').checked
+    };
+  }
+
+  function scheduleRegen(immediate){
+    clearTimeout(regenTimer);
+    regenTimer = setTimeout(runRegen, immediate?0:450);
+  }
+  async function runRegen(){
+    const mySeq = ++regenSeq;
+    const statusEl = document.getElementById('ped-preview-status');
+    if(statusEl) statusEl.textContent = 'Updating preview\u2026';
+    try{
+      const overrides = { settings: draft };
+      if(hasCustomBackground) overrides.useBackground = useBackgroundDraft;
+      const bytes = await buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides);
+      if(mySeq!==regenSeq) return;
+      const blob = new Blob([bytes], { type:'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const frame = document.getElementById('ped-preview-frame');
+      if(frame) frame.src = url;
+      if(lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+      lastBlobUrl = url;
+      const stillStatusEl = document.getElementById('ped-preview-status');
+      if(stillStatusEl) stillStatusEl.textContent = '';
+    }catch(err){
+      console.error(err);
+      const stillStatusEl = document.getElementById('ped-preview-status');
+      if(stillStatusEl) stillStatusEl.textContent = "Couldn't update the preview \u2014 check console for details.";
     }
-    closeSheet();
-    await downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides);
-  };
+  }
+
+  function wireEvents(){
+    const bgSeg = document.getElementById('pp-bg-choice');
+    if(bgSeg) bgSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      useBackgroundDraft = b.dataset.v==='custom';
+      renderSheet();
+    });
+    document.getElementById('pp-logo-btn').onclick = ()=> document.getElementById('pp-logo-file').click();
+    document.getElementById('pp-logo-file').onchange = ()=>{
+      const file = document.getElementById('pp-logo-file').files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = ()=>{ draft.logoDataUrl = reader.result; renderSheet(); };
+      reader.readAsDataURL(file);
+    };
+    const rmBtn = document.getElementById('pp-logo-remove');
+    if(rmBtn) rmBtn.onclick = ()=>{ draft.logoDataUrl=null; renderSheet(); };
+
+    document.querySelectorAll('#pp-theme button').forEach(b=>b.onclick=()=>{
+      document.querySelectorAll('#pp-theme button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+      document.getElementById('pp-customwrap').style.display = b.dataset.v==='custom' ? '' : 'none';
+      readDraftFromControls(); scheduleRegen(true);
+    });
+    document.getElementById('pp-customcolor').oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
+    ['pp-tagline','pp-social'].forEach(id=>{
+      document.getElementById(id).oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
+    });
+    document.getElementById('pp-cert').onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
+    fieldRows.forEach(([k])=>{
+      document.getElementById('pp-field-'+k).onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
+    });
+
+    document.getElementById('pp-download').onclick = async ()=>{
+      readDraftFromControls();
+      Object.assign(pedigreeSettings, draft);
+      await savePedigreeSettings();
+      try{
+        const overrides = { settings: pedigreeSettings };
+        if(hasCustomBackground) overrides.useBackground = useBackgroundDraft;
+        const bytes = await buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides);
+        const blob = new Blob([bytes], { type:'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `${(r.name||'pedigree').replace(/\s+/g,'-')}-pedigree.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+        closeSheet();
+        showToast('Pedigree settings saved and PDF downloaded');
+      }catch(err){
+        console.error(err);
+        showToast('Could not generate the PDF — check console for details.');
+      }
+    };
+  }
+
+  renderSheet();
 }
 
 /* ---------------- ADMIN: worst-case background preview ----------------
@@ -3860,6 +3987,7 @@ function worstCasePreviewRabbits(){
   const longNames = ["Bramblewood's Midnight Constellation","Hollowcreek's Autumn Symphony","Fernwood's Copper Thunderbolt","Ironwood's Velvet Duchess","Prairiewind's Golden Sentinel","Marshgate's Obsidian Comet","Willowmere's Cinnamon Empress","Stonefield's Rustic Nobleman","Cloverdale's Amber Wanderer","Birchwood's Sable Aristocrat","Meadowlight's Chestnut Voyager","Ravenscroft's Ivory Sovereign","Thornfield's Umber Cavalier","Wildflower's Mahogany Countess","Foxglove's Slate Adventurer"];
   const colors = ['Broken Black Tortoiseshell','Chestnut Agouti Frosted','Solid Blue Eyed White','Broken Chocolate Tort'];
   let ni = 0;
+
   const nextName = ()=> longNames[ni++ % longNames.length]+' '+uid();
   const makeWins = (n)=> Array.from({length:n}, (_,i)=>({ id:uid(), award:['Best in Show','Best of Breed','Best Opposite Sex','Grand Champion Leg','1st Broken Group','Reserve Best in Show'][i%6], date: addDays(todayStr(), -30*(i+1)), show:['ARBA National Convention','Great Lakes Regional','State Fairgrounds Show','Midwest Classic'][i%4] }));
   function makeRabbit(nameOverride, sex, tier){
@@ -3916,8 +4044,7 @@ async function downloadOfficialPedigreePDF(r){
     const templateName = myProfileForPdf.pedigree_template || 'generic';
     const hasCustomBackground = !!(myProfileForPdf.pedigree_background && templateName!=='generic');
     if(templateName==='generic' || hasCustomBackground){
-      if(hasCustomBackground) openPedigreeBackgroundChoiceSheet(r, myProfileForPdf);
-      else await downloadDynamicGenericPedigreePDF(r, myProfileForPdf);
+      openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground);
       return;
     }
     const { PDFDocument, StandardFonts } = PDFLib;
@@ -4544,6 +4671,12 @@ async function openPedigreeSettingsSheet(){
     <h2>Pedigree settings</h2>
     <div class="card-sub" style="margin-bottom:12px;">Controls what shows up on your printed pedigree — your logo, contact info, print colors, and which fields appear. Your name, rabbitry name, phone, and website come from <b>More &rarr; My info</b>.</div>
     ${hasCustomBg?'<div class="card-sub" style="background:var(--card); border:1px solid var(--line-strong); border-radius:10px; padding:10px 12px; margin-bottom:12px;">This account has a custom background PDF on file, so print colors are limited to what stays legible on it.</div>':''}
+    ${isAdminUser?`<div class="card no-tap" style="margin-bottom:14px;">
+      <div class="section-label" style="margin:0 0 8px;">MY PEDIGREE TEMPLATE (ADMIN)</div>
+      <div class="field"><label>Template filename</label><input type="text" id="ps-mytemplate" placeholder="generic" value="${esc(myProfileForPdf.pedigree_template||'')}"></div>
+      <label style="display:flex; align-items:center; gap:8px; padding:4px 0 10px; font-size:13px;"><input type="checkbox" id="ps-mytemplate-bg" ${myProfileForPdf.pedigree_background?'checked':''} style="width:18px; height:18px;"> This is a background PDF (draw pedigree on top)</label>
+      <button class="btn btn-secondary btn-sm" id="ps-mytemplate-save">Save my template</button>
+    </div>`:''}
     <div class="field"><label>Logo</label>
       <div style="display:flex; align-items:center; gap:10px;">
         ${s.logoDataUrl?`<img src="${s.logoDataUrl}" style="width:48px; height:48px; object-fit:contain; border:1px solid var(--line-strong); border-radius:8px;">`:''}
@@ -4566,6 +4699,16 @@ async function openPedigreeSettingsSheet(){
     <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="ps-cert" ${s.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="ps-save">Save</button></div>`);
 
+  const myTplSave = document.getElementById('ps-mytemplate-save');
+  if(myTplSave) myTplSave.onclick = async ()=>{
+    const val = (document.getElementById('ps-mytemplate').value||'generic').trim();
+    const isBg = document.getElementById('ps-mytemplate-bg').checked;
+    try{
+      await sb.from('profiles').update({pedigree_template:val, pedigree_background:isBg}).eq('id',currentUser.id);
+      showToast('Your pedigree template updated');
+      closeSheet(); openPedigreeSettingsSheet();
+    }catch(e){ console.error(e); showToast('Could not save — check console for details.'); }
+  };
   document.getElementById('ps-logo-btn').onclick = ()=> document.getElementById('ps-logo-file').click();
   document.getElementById('ps-logo-file').onchange = ()=>{
     const file = document.getElementById('ps-logo-file').files[0];
@@ -4780,7 +4923,8 @@ function contextualActions(r){
   else if(r.status==='nursing'){ if(canRebred(r)) acts.push(['rebred','Rebred']); acts.push(['wean','Weaned'],['editlitter','Edit litter']); }
   else if(isArchived(r)){ acts.push(['unarchive','Return to roster']); }
   else if(r.status==='growing'){ acts.push(['graduate','Move to roster']); }
-  else if(r.sex==='doe'){ acts.push(['bred','Mark doe bred'],['plan','Plan a breeding']); }
+  else if(r.sex==='doe'){ acts.push(['bred','Record breeding'],['plan','Plan a breeding']); }
+  acts.push(['win','Add win']);
   return acts;
 }
 function profileTabsFor(r){
@@ -4857,7 +5001,7 @@ function breedingTabHTML(r){
       <div class="card-actions"><button class="btn btn-secondary btn-sm" data-pa="litters">View in Litters tab</button></div></div>`;
   } else if(r.sex==='doe' && r.status!=='growing'){
     cur = `<div class="card no-tap"><div class="card-detail">Currently open — not bred.</div>
-      <div class="card-actions"><button class="btn btn-primary btn-sm" data-pa="bred">Mark doe bred</button><button class="btn btn-secondary btn-sm" data-pa="plan">Plan a breeding</button></div></div>`;
+      <div class="card-actions"><button class="btn btn-primary btn-sm" data-pa="bred">Record breeding</button><button class="btn btn-secondary btn-sm" data-pa="plan">Plan a breeding</button></div></div>`;
   }
   const hist = (r.breedingHistory||[]).slice().sort((a,b)=>b.bredDate.localeCompare(a.bredDate));
   const histHTML = hist.length ? hist.map(e=>historyEntryHTML(r,e)).join('') : `<div class="empty">No breedings logged yet.</div>`;
@@ -4907,6 +5051,7 @@ function wireProfileTab(r){
       else if(a==='addphoto'){ profileTab='photos'; renderProfile(); }
       else if(a==='addnote'){ profileTab='notes'; renderProfile(); }
       else if(a==='litters'){ profileTab='litters'; renderProfile(); }
+      else if(a==='win'){ openWinsSheet(r); }
     };
   });
   if(profileTab==='breeding'){
@@ -5249,7 +5394,7 @@ let csvImportRows = [];
 function openImportCsvSheet(){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Import from CSV</h2>
-    <div class="card-sub" style="margin-bottom:12px;">Upload a CSV with a header row. Columns like Name, Sex, Breed, Color, Ear #, DOB, Weight, Legs (wins), Sire, Dam, Notes are matched automatically — you don't need exact column names or a particular order. Only Name is required.</div>
+    <div class="card-sub" style="margin-bottom:12px;">Upload a CSV with a header row. Columns like Name, Sex, Breed, Color, Ear #, DOB, Weight, Legs, Sire, Dam, Notes are matched automatically — you don't need exact column names or a particular order. Only Name is required.</div>
     <button class="btn btn-primary" style="width:100%;" id="csvPickBtn">Choose CSV file</button>
     <div id="csvPreviewArea"></div>`);
   document.getElementById('csvPickBtn').onclick = ()=>document.getElementById('csvFileInput').click();
