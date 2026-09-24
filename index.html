@@ -28,6 +28,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Public+Sans:wght@400;500;600&family=Jost:wght@500;600&family=JetBrains+Mono:wght@500&family=Pinyon+Script&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="pdf-lib.min.js"></script>
+<script src="fontkit.umd.min.js"></script>
 <script src="pdf.min.js"></script>
 <style>
   :root{
@@ -36,6 +37,7 @@
     --cream:#f7f2e6; --ivory:#fffdf8;
     --marsh:#4e6146; --marsh-deep:#37452f;
     --rust:#a34632; --rust-light:#f3ded9;
+    --green:#3d6b4a; --green-light:#dcead9;
     --page:#f7f2e6; --card:#fffdf8; --ink:#0c1830; --ink-soft:#142440;
     --line:#e7ddc6; --line-strong:#cabb95;
     --navbar:#142440; --navbar-dim:#9aa6bb;
@@ -44,7 +46,7 @@
     --page:#0e141f; --card:#18202e; --ink:#e8e4d8; --ink-soft:#c9c4b4;
     --line:#2a3446; --line-strong:#3c4759;
     --cream:#0e141f; --ivory:#18202e; --navy:#e8e4d8; --navy-deep:#f2efe6;
-    --rust-light:#3a2320; --navbar:#080d16;
+    --rust-light:#3a2320; --green:#6fae82; --green-light:#1e2e22; --navbar:#080d16;
   }
   *{box-sizing:border-box;}
   button, .card, .stat, [data-openprofile]{ touch-action:manipulation; }
@@ -108,7 +110,7 @@
   .btn-danger{background:transparent; color:var(--rust); border:1px solid var(--rust);}
   .btn-sm{padding:9px 13px; min-height:38px; font-size:12.5px;}
 
-  nav.bottom{ position:fixed; bottom:0; left:0; right:0; background:var(--navbar); display:grid; grid-template-columns:repeat(5,1fr); padding:7px 1px 9px; z-index:25; }
+  nav.bottom{ position:fixed; bottom:0; left:0; right:0; background:var(--navbar); display:grid; grid-template-columns:repeat(6,1fr); padding:7px 1px 9px; z-index:25; }
   nav.bottom button{ background:none; border:none; display:flex; flex-direction:column; align-items:center; gap:3px; cursor:pointer; padding:2px 0; }
   nav.bottom svg{ width:19px; height:19px; stroke:var(--navbar-dim); fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
   nav.bottom svg text{ fill:var(--navbar-dim); }
@@ -1566,8 +1568,18 @@ const RABBITS_KEY = 'rabbits_v2';
 const PLANNED_KEY = 'planned_v1';
 const EVENTS_KEY = 'events_v1';
 const SHOWS_KEY = 'shows_v1';
+const EXPENSES_KEY = 'expenses_v1';
+const PEDIGREE_SETTINGS_KEY = 'pedigreeSettings_v1';
+function defaultPedigreeSettings(){
+  return {
+    logoDataUrl:null, social:'', tagline:'',
+    printTheme:'sex', customAccent:'#c6a15b', hasCertification:true,
+    fields:{ dob:true, reg:true, gc:true, ear:true, color:true, weight:true }
+  };
+}
+let pedigreeSettings = defaultPedigreeSettings();
 const THEME_KEY = 'theme_v1';
-let rabbits = [], planned = [], customEvents = [], shows = [], currentTab = 'home', searchQuery = '', doesFilter = 'all', rabbitsGroup = 'does';
+let rabbits = [], planned = [], customEvents = [], shows = [], expenses = [], currentTab = 'home', searchQuery = '', doesFilter = 'all', rabbitsGroup = 'does', currentMoneyPeriod = 'thismonth';
 let profileRabbitId = null, profileTab = 'overview', photoActiveCategory = 'Primary';
 let expandedLitters = new Set();
 let calWeekStart = null, calSelectedDate = null;
@@ -1576,6 +1588,22 @@ function todayStr(){ return new Date().toISOString().slice(0,10); }
 function addDays(d,n){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
 function daysBetween(a,b){ return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
 function fmtDate(d){ if(!d) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
+function fmtMoney(n){ n=Number(n)||0; return '$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function parsePriceNum(v){ if(v==null) return 0; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; }
+const EXPENSE_CATEGORIES = ['Feed','Hay & bedding','Caging & wire','Vet & meds','Show & entry fees','ARBA & registration','Supplies','Shipping & travel','Other'];
+function moneyPeriodRange(period){
+  const now=new Date(), y=now.getFullYear(), m=now.getMonth();
+  if(period==='thismonth'){ const s=new Date(y,m,1), e=new Date(y,m+1,0); return [s.toISOString().slice(0,10), e.toISOString().slice(0,10)]; }
+  if(period==='lastmonth'){ const s=new Date(y,m-1,1), e=new Date(y,m,0); return [s.toISOString().slice(0,10), e.toISOString().slice(0,10)]; }
+  if(period==='thisyear'){ return [y+'-01-01', y+'-12-31']; }
+  return [null,null];
+}
+function inMoneyPeriod(dateStr, period){
+  if(!dateStr) return false;
+  if(period==='alltime') return true;
+  const [s,e] = moneyPeriodRange(period);
+  return dateStr>=s && dateStr<=e;
+}
 function startOfWeek(d){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()-x.getDay()); return x.toISOString().slice(0,10); }
 function uid(){ return 'r'+Math.random().toString(36).slice(2,10); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
@@ -1625,7 +1653,7 @@ const ROSTER = [
 
 function blankRabbit(over){
   return Object.assign({
-    id:uid(), name:'', sex:'doe', breed:'', color:'', earNumber:'', dob:null, weight:'', legsWins:'', registrationNumber:'',
+    id:uid(), name:'', sex:'doe', breed:'', color:'', earNumber:'', dob:null, weight:'', legsWins:'', registrationNumber:'', gcNumber:'', wins:[],
     sireName:'', damName:'', status:'open', partner:null, bredDate:null, dueDate:null,
     litterBornDate:null, litterKits:null, litterDead:null, weanDate:null, sellDate:null,
     rebreedWeeks:3, lastLitterSummary:'', notes:'', notesLog:[], photos:[], flag:'', alias:'', external:false, weightLog:[],
@@ -1649,6 +1677,8 @@ function ensureRabbitFieldDefaults(){
     if(!r.photos) r.photos=[];
     r.photos.forEach(p=>{ if(p.category==='Show / Stack') p.category='Front'; });
     if(r.registrationNumber===undefined) r.registrationNumber='';
+    if(r.gcNumber===undefined) r.gcNumber='';
+    if(!r.wins) r.wins=[];
     if(r.graduatedDate===undefined) r.graduatedDate=null;
     if(r.juniorAckDone===undefined) r.juniorAckDone=false;
   });
@@ -1777,6 +1807,8 @@ async function loadData(){
   try{ planned = JSON.parse((await window.storage.get(PLANNED_KEY,false)).value); }catch(e){ planned=[]; }
   try{ customEvents = JSON.parse((await window.storage.get(EVENTS_KEY,false)).value); }catch(e){ customEvents=[]; }
   try{ shows = JSON.parse((await window.storage.get(SHOWS_KEY,false)).value); }catch(e){ shows=[]; }
+  try{ expenses = JSON.parse((await window.storage.get(EXPENSES_KEY,false)).value); }catch(e){ expenses=[]; }
+  try{ pedigreeSettings = Object.assign(defaultPedigreeSettings(), JSON.parse((await window.storage.get(PEDIGREE_SETTINGS_KEY,false)).value)); }catch(e){ pedigreeSettings=defaultPedigreeSettings(); }
   if(hadNoSavedData){
     if(isAdminUser && !viewingAsCustomer){
       // Your own account only: load your real roster and breeding log.
@@ -1791,7 +1823,7 @@ async function loadData(){
   } else {
     ensureRabbitFieldDefaults();
   }
-  await saveData(); await savePlanned(); await saveEvents(); await saveShows();
+  await saveData(); await savePlanned(); await saveEvents(); await saveShows(); await saveExpenses(); await savePedigreeSettings();
   try{ const t=(await window.storage.get(THEME_KEY,false)).value; if(t==='dark') document.documentElement.setAttribute('data-theme','dark'); }catch(e){}
   render();
 }
@@ -1818,6 +1850,14 @@ function hideSaveError(){
 async function savePlanned(){ try{ await window.storage.set(PLANNED_KEY, JSON.stringify(planned), false); }catch(e){ console.error(e); } }
 async function saveEvents(){ try{ await window.storage.set(EVENTS_KEY, JSON.stringify(customEvents), false); }catch(e){ console.error(e); } }
 async function saveShows(){ try{ await window.storage.set(SHOWS_KEY, JSON.stringify(shows), false); }catch(e){ console.error(e); } }
+async function saveExpenses(){
+  try{ await window.storage.set(EXPENSES_KEY, JSON.stringify(expenses), false); return true; }
+  catch(e){ console.error(e); showToast("Couldn't save — check your connection and try again."); return false; }
+}
+async function savePedigreeSettings(){
+  try{ await window.storage.set(PEDIGREE_SETTINGS_KEY, JSON.stringify(pedigreeSettings), false); return true; }
+  catch(e){ console.error(e); showToast("Couldn't save — check your connection and try again."); return false; }
+}
 function showToast(m){ const t=document.getElementById('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),2000); }
 
 document.getElementById('themeBtn').onclick = async ()=>{
@@ -1911,9 +1951,10 @@ const ICONS = {
   juniors:'<path d="M12 20v-8"/><path d="M12 12C12 8 9 5 5 5c0 4 3 7 7 7z"/><path d="M12 14c0-3 2.5-6 6-6 0 3-2.5 6-6 6z"/>',
   planned:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18M12 14v4M10 16h4"/>',
   forsale:'<text x="12" y="17" text-anchor="middle" font-size="15" font-weight="700" font-family="sans-serif" stroke="none">$</text>',
+  money:'<circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M15 9.3c0-1.5-1.3-2.6-3-2.6s-3 1-3 2.4c0 1.6 1.5 2 3 2.4c1.5.4 3 .9 3 2.5c0 1.4-1.3 2.5-3 2.5s-3-1.1-3-2.6"/>',
   more:'<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>'
 };
-const NAV = [['home','Home'],['rabbits','Herd'],['litters','Nursery'],['calendar','Calendar'],['more','More']];
+const NAV = [['home','Home'],['rabbits','Herd'],['litters','Nursery'],['calendar','Calendar'],['money','Money'],['more','More']];
 
 function renderNav(){
   const activeMap = {does:'rabbits', bucks:'rabbits', juniors:'rabbits', ancestors:'more', archive:'more', backup:'more', merge:'more', search:'more', planned:'more', forsale:'more'};
@@ -1986,7 +2027,7 @@ function cardHTML(r, forceUrgent, origin){
   else if(isArchived(r)) a=`<button class="btn btn-primary" data-act="unarchive" data-id="${r.id}">Return to roster</button>`;
   else if(r.sex==='doe') a=`<button class="btn btn-primary" data-act="bred" data-id="${r.id}">Mark bred</button><button class="btn btn-secondary btn-sm" data-act="plan" data-id="${r.id}">Plan a breeding</button>`;
   else a='';
-  a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
+  a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="wins" data-id="${r.id}">Wins</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
   return `<div class="card ${urgent?'urgent':''}" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div>
     <div class="card-detail">${detail}</div>${flag}<div class="card-actions">${a}</div></div>`;
 }
@@ -2132,6 +2173,7 @@ function renderMain(){
     document.getElementById('archiveAddBtn').onclick=openAddSheet;
   } else if(currentTab==='backup'){ renderBackup(main); return; }
   else if(currentTab==='forsale'){ renderForSale(main); return; }
+  else if(currentTab==='money'){ renderMoney(main); return; }
   attachCardEvents();
 }
 
@@ -2640,6 +2682,7 @@ function attachCardEvents(){
       else if(act==='unarchive') openUnarchive(r);
       else if(act==='edit') openEditSheet(r);
       else if(act==='pedigree') openPedigreeSheet(r);
+      else if(act==='wins') openWinsSheet(r);
       else if(act==='history') openHistorySheet(r);
     };
   });
@@ -2906,7 +2949,10 @@ function openEditSheet(r, origin){
       <div class="field"><label>Date of birth</label><input type="text" inputmode="numeric" id="f-dob" value="${esc(isoToSlash(r.dob))}" placeholder="MM/DD/YYYY"></div>
       <div class="field"><label>Registration #</label><input id="f-reg" value="${esc(r.registrationNumber||'')}"></div>
     </div>
-    <div class="field"><label>Legs / Wins</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
+    <div class="row2">
+      <div class="field"><label>GC #</label><input id="f-gc" value="${esc(r.gcNumber||'')}"></div>
+      <div class="field"><label>Legs / Wins</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
+    </div>
     <div class="row2">
       <div class="field"><label>Sire</label><input id="f-sire" value="${esc(r.sireName||'')}"></div>
       <div class="field"><label>Dam</label><input id="f-dam" value="${esc(r.damName||'')}"></div>
@@ -2942,6 +2988,7 @@ function openEditSheet(r, origin){
       r.earNumber=document.getElementById('f-ear').value; r.weight=document.getElementById('f-weight').value;
       r.dob=csvParseDate(document.getElementById('f-dob').value)||null; r.legsWins=document.getElementById('f-legs').value;
       r.registrationNumber=document.getElementById('f-reg').value;
+      r.gcNumber=document.getElementById('f-gc').value;
       r.sireName=finalSire; r.damName=finalDam; r.notes=document.getElementById('f-notes').value;
       if(finalSire) ensureAncestor(finalSire,'buck');
       if(finalDam) ensureAncestor(finalDam,'doe');
@@ -3473,7 +3520,7 @@ function buildOfficialPedigreeValues(r){
 async function getMyPedigreeProfile(){
   if(localSandboxMode) return { pedigree_template:'generic' };
   try{
-    const {data} = await sb.from('profiles').select('pedigree_template, first_name, last_name, rabbitry_name, phone, website, location').eq('id',currentUser.id).maybeSingle();
+    const {data} = await sb.from('profiles').select('pedigree_template, pedigree_background, first_name, last_name, rabbitry_name, phone, website, location').eq('id',currentUser.id).maybeSingle();
     return data || { pedigree_template:'generic' };
   }catch(e){ return { pedigree_template:'generic' }; }
 }
@@ -3483,11 +3530,397 @@ async function getMyPedigreeProfile(){
 // generic template. Templates without these fields (like a custom one
 // with contact info baked into the artwork) simply skip them silently.
 const CONTACT_FIELD_IDS = { RABBITRY_NAME:'rabbitry_name', BREEDER_NAME:'breeder_name', CONTACT_PHONE:'contact_phone', CONTACT_WEBSITE:'contact_website' };
+/* ---------------- DYNAMIC "GENERIC" PEDIGREE RENDERER ----------------
+   Draws the whitelabel pedigree entirely in code (not a static template
+   fill) so it can honor the account's print theme, field toggles, and
+   show wins — matching the design mockup exactly. Your own CJM Legacy
+   template, and any custom uploaded template, are untouched and keep
+   using the older fill-a-static-PDF path below. */
+let _pedigreeFontBytesPromise = null;
+async function loadPedigreeFontBytes(){
+  if(_pedigreeFontBytesPromise) return _pedigreeFontBytesPromise;
+  const names = ['CormorantGaramond-SemiBold.ttf','CormorantGaramond-MediumItalic.ttf','PublicSans-Regular.ttf','PublicSans-SemiBold.ttf','JetBrainsMono-Medium.ttf','JetBrainsMono-Bold.ttf'];
+  _pedigreeFontBytesPromise = Promise.all(names.map(n=>fetch('fonts/'+n).then(res=>{
+    if(!res.ok) throw new Error('Font not found: '+n);
+    return res.arrayBuffer();
+  })));
+  return _pedigreeFontBytesPromise;
+}
+function dataUrlToBytes(dataUrl){
+  const b64 = dataUrl.split(',')[1];
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+  return bytes;
+}
+function pedigreeAccentColorFor(theme, customAccent, sex){
+  if(theme==='mono') return '#141414';
+  if(theme==='custom') return customAccent || '#c6a15b';
+  return sex==='doe' ? '#b5507c' : '#3d6ea5';
+}
+function pedigreeSpaceEvenly(boxHeights, availH){
+  const total = boxHeights.reduce((a,b)=>a+b,0);
+  const gap = Math.max((availH - total) / (boxHeights.length + 1), 4);
+  let y = gap; const ys=[];
+  for(const h of boxHeights){ ys.push(y); y += h + gap; }
+  return ys;
+}
+function pedigreeWinLineText(w){ return [w.award, w.date?fmtDate(w.date):'', w.show].filter(Boolean).join('  \u00b7  '); }
+function pedigreeFieldLine(item, fields, includeGC){
+  const parts=[];
+  if(fields.ear && item.earNumber) parts.push(item.earNumber);
+  if(fields.weight && item.weight) parts.push(item.weight+' lbs');
+  if(fields.color && item.color) parts.push(item.color);
+  if(fields.reg && item.registrationNumber) parts.push('Reg '+item.registrationNumber);
+  if(includeGC && fields.gc && item.gcNumber) parts.push('GC '+item.gcNumber);
+  return parts.join('  \u00b7  ');
+}
+async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides){
+  overrides = overrides || {};
+  const { PDFDocument, rgb } = PDFLib;
+  const hexToRgb = (hex)=>{ hex=hex.replace('#',''); const n=parseInt(hex,16); return rgb(((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255); };
+
+  const W=792, H=612, M=30;
+  const wantBackground = overrides.useBackground!==undefined
+    ? overrides.useBackground
+    : !!(myProfileForPdf.pedigree_background && myProfileForPdf.pedigree_template && myProfileForPdf.pedigree_template!=='generic');
+
+  let pdfDoc, page, usingBackground=false;
+  if(wantBackground){
+    try{
+      const bgUrl = `${SUPABASE_URL}/storage/v1/object/public/pedigree-templates/${myProfileForPdf.pedigree_template}.pdf`;
+      const res = await fetch(bgUrl);
+      if(!res.ok) throw new Error('background not found');
+      const bgBytes = await res.arrayBuffer();
+      pdfDoc = await PDFDocument.load(bgBytes);
+      page = pdfDoc.getPage(0);
+      usingBackground = true;
+    }catch(bgErr){
+      console.warn('Custom pedigree background failed to load, falling back to plain white:', bgErr);
+      pdfDoc = await PDFDocument.create();
+      page = pdfDoc.addPage([W,H]);
+    }
+  } else {
+    pdfDoc = await PDFDocument.create();
+    page = pdfDoc.addPage([W,H]);
+  }
+  pdfDoc.registerFontkit(fontkit);
+  const [b1,b2,b3,b4,b5,b6] = await loadPedigreeFontBytes();
+  const [serifBold, serifItalic, sans, sansBold, mono, monoBold] = await Promise.all(
+    [b1,b2,b3,b4,b5,b6].map(b=>pdfDoc.embedFont(b))
+  );
+  const fonts = { serifBold, serifItalic, sans, sansBold, mono, monoBold };
+
+  function textWidth(text, font, size){ return font.widthOfTextAtSize(text, size); }
+  function drawText(text, x, yTop, font, size, color){ page.drawText(text, { x, y: yTop - size*0.82, size, font, color }); }
+  function drawCenteredText(text, cx, yTop, font, size, color){ drawText(text, cx - textWidth(text,font,size)/2, yTop, font, size, color); }
+  function truncateToWidth(text, font, size, maxW){
+    if(textWidth(text,font,size) <= maxW) return text;
+    let t=text; while(t.length>1 && textWidth(t+'\u2026',font,size)>maxW) t=t.slice(0,-1);
+    return t+'\u2026';
+  }
+
+  const pedigreeSettings2 = pedigreeSettings;
+  const theme = overrides.theme || pedigreeSettings2.printTheme || 'sex';
+  const customAccentVal = overrides.customAccent || pedigreeSettings2.customAccent;
+  const accentHex = pedigreeAccentColorFor(theme, customAccentVal, r.sex);
+  const accent = hexToRgb(accentHex);
+  const black = rgb(0.078,0.078,0.078), gray = rgb(0.33,0.33,0.33), white = rgb(1,1,1);
+  const fields = pedigreeSettings2.fields || {};
+
+  if(!usingBackground) page.drawRectangle({ x:0, y:0, width:W, height:H, color:white });
+
+  // header
+  let hx = M;
+  const headerTopY = H-M;
+  const headerBottomY = headerTopY - 44;
+  if(usingBackground){
+    page.drawRectangle({ x:M-8, y:headerBottomY-4, width:W-2*(M-8), height:(H-M+6)-(headerBottomY-4), color:white, opacity:0.94 });
+  }
+  let logoImg = null;
+  if(pedigreeSettings2.logoDataUrl){
+    const bytes = dataUrlToBytes(pedigreeSettings2.logoDataUrl);
+    logoImg = pedigreeSettings2.logoDataUrl.includes('image/png') ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+  }
+  if(logoImg){
+    const logoSize=42, dims=logoImg.scale(1), ratio=Math.min(logoSize/dims.width, logoSize/dims.height);
+    const w=dims.width*ratio, h=dims.height*ratio;
+    page.drawImage(logoImg, { x:hx, y: headerTopY-42+(42-h)/2, width:w, height:h });
+    hx += logoSize+10;
+  }
+  const rabbitryName = myProfileForPdf.rabbitry_name || '';
+  drawText(rabbitryName || 'Rabbitry', hx, headerTopY, fonts.serifBold, 19, black);
+  if(pedigreeSettings2.tagline) drawText(pedigreeSettings2.tagline, hx, headerTopY-22, fonts.mono, 7, accent);
+
+  const rightX = W-M; let ry = headerTopY;
+  const rightLines = [['Breed', r.breed||'']];
+  if(fields.dob!==false) rightLines.push(['Date of Birth', r.dob?fmtDate(r.dob):'']);
+  rightLines.push(['Sex', r.sex==='doe'?'Doe':'Buck']);
+  rightLines.forEach(([label,val])=>{
+    const t = `${label}: ${val}`, w=textWidth(t,fonts.sans,8.5);
+    drawText(t, rightX-w, ry, fonts.sans, 8.5, gray); ry -= 13;
+  });
+  page.drawLine({ start:{x:M,y:headerBottomY}, end:{x:W-M,y:headerBottomY}, thickness:0.75, color:accent });
+
+  // footer
+  const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
+  const contactParts = [breederName, myProfileForPdf.website, myProfileForPdf.phone, pedigreeSettings2.social].map(v=>sanitizeForPdf(v||'')).filter(Boolean);
+  const contactLine = contactParts.join('  \u00b7  ');
+  const footerH = pedigreeSettings2.hasCertification ? 58 : (contactLine? 16:0);
+  const footerTopY = M+footerH;
+  if(usingBackground && footerH>0){
+    page.drawRectangle({ x:M-8, y:M-6, width:W-2*(M-8), height:(footerTopY+6)-(M-6), color:white, opacity:0.94 });
+  }
+  if(footerH>0) page.drawLine({ start:{x:M,y:footerTopY}, end:{x:W-M,y:footerTopY}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
+  let fy = footerTopY-14;
+  if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
+  if(pedigreeSettings2.hasCertification){
+    drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
+    fy -= 18;
+    const sigW=140, dateW=70, gapW=30;
+    const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,8)+textWidth('Date:',fonts.sans,8)+12;
+    let lx = W/2 - totalW/2;
+    drawText('Signature:', lx, fy, fonts.sans, 8, gray); lx += textWidth('Signature:',fonts.sans,8)+6;
+    page.drawLine({start:{x:lx,y:fy-2},end:{x:lx+sigW,y:fy-2},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
+    drawText('Date:', lx, fy, fonts.sans, 8, gray); lx += textWidth('Date:',fonts.sans,8)+6;
+    page.drawLine({start:{x:lx,y:fy-2},end:{x:lx+dateW,y:fy-2},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+  }
+
+  // tree
+  const treeTop = headerBottomY-12, treeBottom = footerTopY+10, treeH = treeTop-treeBottom;
+  const colGap=12, colW=(W-2*M-3*colGap)/4;
+  const col1X=M, col2X=col1X+colW+colGap, col3X=col2X+colW+colGap, col4X=col3X+colW+colGap;
+
+  const TIER = {
+    self:  { pre:14, ribbonH:15, postRibbon:10, lineH:12.5, bodySize:9,   ribbonSize:8,   ribbonPadX:8, borderW:1,    winGapA:7, winGapB:10, labelGap:11, winLineH:11,  winSize:8   },
+    parent:{ pre:10, ribbonH:12, postRibbon:8,  lineH:10.5, bodySize:8,   ribbonSize:6.5, ribbonPadX:7, borderW:0.75, winGapA:6, winGapB:9,  labelGap:9,  winLineH:9.5, winSize:7   },
+    grand: { pre:8,  ribbonH:10, postRibbon:6,  lineH:9,    bodySize:7,   ribbonSize:5.5, ribbonPadX:6, borderW:0.75, winGapA:5, winGapB:8,  labelGap:8,  winLineH:8,   winSize:6.5 },
+    great: { pre:6,  ribbonH:9,  postRibbon:5,  lineH:7.5,  bodySize:6.2, ribbonSize:4.8, ribbonPadX:5, borderW:0.6,  winGapA:0, winGapB:0,  labelGap:0,  winLineH:0,   winSize:0   }
+  };
+  const BOTTOM_PAD=9;
+  function computeBoxHeight(tier, linesCount, winLinesCount, hasLabel){
+    const t=TIER[tier];
+    let h = t.pre+t.ribbonH+t.postRibbon+linesCount*t.lineH;
+    if(winLinesCount>0){ h += t.winGapA+t.winGapB; if(hasLabel) h+=t.labelGap; h += winLinesCount*t.winLineH; }
+    return h+BOTTOM_PAD;
+  }
+  function drawBox(tier, x, yTop, w, ribbonText, lines, winsLabel, winLines){
+    const t=TIER[tier];
+    const h = computeBoxHeight(tier, lines.length, winLines?winLines.length:0, !!winsLabel);
+    page.drawRectangle({ x, y:yTop-h, width:w, height:h, borderColor:accent, borderWidth:t.borderW, color:white });
+    let cy = yTop - t.pre;
+    const rw = textWidth(ribbonText, fonts.monoBold, t.ribbonSize) + t.ribbonPadX*2;
+    const rx = x + (w-rw)/2;
+    page.drawRectangle({ x:rx, y:cy-t.ribbonH, width:rw, height:t.ribbonH, color:accent });
+    const txtW = textWidth(ribbonText, fonts.monoBold, t.ribbonSize);
+    page.drawText(ribbonText, { x: rx+(rw-txtW)/2, y: cy-t.ribbonH/2-t.ribbonSize*0.33, size:t.ribbonSize, font:fonts.monoBold, color:white });
+    cy -= t.ribbonH + t.postRibbon;
+    lines.forEach(line=>{ drawText(truncateToWidth(line,fonts.sans,t.bodySize,w-16), x+8, cy, fonts.sans, t.bodySize, black); cy -= t.lineH; });
+    if(winLines && winLines.length){
+      cy -= t.winGapA;
+      page.drawLine({start:{x:x+8,y:cy},end:{x:x+w-8,y:cy},thickness:0.5,color:accent});
+      cy -= t.winGapB;
+      if(winsLabel){ drawText(winsLabel, x+8, cy, fonts.monoBold, tier==='self'?7:6, accent); cy -= t.labelGap; }
+      winLines.forEach(wl=>{ drawText(truncateToWidth(wl,fonts.sans,t.winSize,w-16), x+8, cy, fonts.sans, t.winSize, black); cy -= t.winLineH; });
+    }
+    return h;
+  }
+
+  function ancestorFields(anc, includeGC){
+    if(!anc || !anc.name) return null;
+    const l=[`Name: ${anc.name}`];
+    if(fields.ear && anc.earNumber) l.push(`Ear #: ${anc.earNumber}`);
+    if(fields.weight && anc.weight) l.push(`Weight: ${anc.weight} lbs`);
+    if(fields.color && anc.color) l.push(`Color: ${anc.color}`);
+    if(fields.reg && anc.registrationNumber) l.push(`Reg #: ${anc.registrationNumber}`);
+    if(includeGC && fields.gc && anc.gcNumber) l.push(`GC #: ${anc.gcNumber}`);
+    if(anc.legsWins) l.push(`Legs (Wins): ${anc.legsWins}`);
+    return l;
+  }
+
+  // self
+  const selfLinesArr = ancestorFields(r, true) || [`Name: ${r.name}`];
+  const selfWinLines = (r.wins||[]).slice(0,5).map(pedigreeWinLineText);
+  const selfBoxH = computeBoxHeight('self', selfLinesArr.length, selfWinLines.length, true);
+  const selfY = treeBottom + (treeH-selfBoxH)/2;
+  drawBox('self', col1X, selfY+selfBoxH, colW, 'GENERATION 1', selfLinesArr, selfWinLines.length?'SHOW WINS':null, selfWinLines);
+
+  // parents
+  const g = p => ancestorByPath(r.name, p);
+  const parentDefs = [ {label:'SIRE (FATHER)', anc:g('s')}, {label:'DAM (MOTHER)', anc:g('d')} ];
+  const parentBoxes = parentDefs.map(({label,anc})=>{
+    const lines = ancestorFields(anc, true) || ['Name: \u2014'];
+    const winLines = anc ? (anc.wins||[]).slice(0,2).map(pedigreeWinLineText) : [];
+    return { label, lines, winLines, h: computeBoxHeight('parent', lines.length, winLines.length, false) };
+  });
+  const pYs = pedigreeSpaceEvenly(parentBoxes.map(b=>b.h), treeH);
+  parentBoxes.forEach((b,i)=>drawBox('parent', col2X, treeTop-pYs[i], colW, b.label, b.lines, null, b.winLines));
+
+  // grandparents
+  const gpDefs = [
+    {label:'PATERNAL GRANDSIRE', anc:g('ss')}, {label:'PATERNAL GRANDDAM', anc:g('sd')},
+    {label:'MATERNAL GRANDSIRE', anc:g('ds')}, {label:'MATERNAL GRANDDAM', anc:g('dd')}
+  ];
+  const gpBoxes = gpDefs.map(({label,anc})=>{
+    const line1 = anc ? pedigreeFieldLine(anc, fields, true) : '';
+    const lines = anc ? [anc.name, line1, anc.legsWins?`Legs (Wins): ${anc.legsWins}`:''].filter(Boolean) : ['\u2014'];
+    const winLines = anc && anc.wins && anc.wins.length ? [pedigreeWinLineText(anc.wins[0])] : [];
+    return { label, lines, winLines, h: computeBoxHeight('grand', lines.length, winLines.length, false) };
+  });
+  const gpYs = pedigreeSpaceEvenly(gpBoxes.map(b=>b.h), treeH);
+  gpBoxes.forEach((b,i)=>drawBox('grand', col3X, treeTop-gpYs[i], colW, b.label, b.lines, null, b.winLines));
+
+  // great-grandparents
+  const ggPaths = ['sss','ssd','sds','sdd','dss','dsd','dds','ddd'];
+  const ggLabels = ['GG SIRE 1','GG DAM 1','GG SIRE 2','GG DAM 2','GG SIRE 3','GG DAM 3','GG SIRE 4','GG DAM 4'];
+  const ggBoxes = ggPaths.map((p,i)=>{
+    const anc = g(p);
+    const parts=[];
+    if(anc){
+      if(fields.weight && anc.weight) parts.push(anc.weight+' lbs');
+      if(fields.color && anc.color) parts.push(anc.color);
+      if(anc.legsWins) parts.push('L:'+anc.legsWins);
+    }
+    const lines = anc ? [anc.name, parts.join('  \u00b7  ')].filter(Boolean) : ['\u2014'];
+    return { label:ggLabels[i], lines, h: computeBoxHeight('great', lines.length, 0, false) };
+  });
+  const ggYs = pedigreeSpaceEvenly(ggBoxes.map(b=>b.h), treeH);
+  ggBoxes.forEach((b,i)=>drawBox('great', col4X, treeTop-ggYs[i], colW, b.label, b.lines, null, null));
+
+  return pdfDoc.save();
+}
+async function downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides){
+  try{
+    if(!myProfileForPdf) myProfileForPdf = await getMyPedigreeProfile();
+    const pdfBytes = await buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides);
+    const blob = new Blob([pdfBytes], { type:'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${(r.name||'pedigree').replace(/\s+/g,'-')}-pedigree.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    console.error(err);
+    showToast('Could not generate the official PDF — check console for details.');
+  }
+}
+
+/* Quick, one-time choice shown only when this account has a custom
+   background on file: use it (the normal case), or skip it for this one
+   download and pick from the full color range instead — nothing here is
+   saved back to Pedigree settings. */
+function openPedigreeBackgroundChoiceSheet(r, myProfileForPdf){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Download pedigree \u2014 ${esc(r.name)}</h2>
+    <div class="field"><label>Background</label>
+      <div class="seg" id="bg-choice">
+        <button type="button" data-v="custom" class="on">Use custom background</button>
+        <button type="button" data-v="plain">Plain white</button>
+      </div>
+    </div>
+    <div id="bg-plain-theme" style="display:none;">
+      <div class="field"><label>Print colors</label>
+        <div class="seg" id="bg-theme-seg">
+          <button type="button" data-v="mono">Black &amp; white</button>
+          <button type="button" data-v="sex" class="on">Pink / blue by sex</button>
+          <button type="button" data-v="custom">Custom</button>
+        </div>
+      </div>
+      <div class="field" id="bg-customcolor-wrap" style="display:none;"><label>Custom accent color</label><input type="color" id="bg-customcolor" value="${esc(pedigreeSettings.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
+    </div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="bg-go">Download</button></div>`);
+
+  document.querySelectorAll('#bg-choice button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#bg-choice button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    document.getElementById('bg-plain-theme').style.display = b.dataset.v==='plain' ? '' : 'none';
+  });
+  document.querySelectorAll('#bg-theme-seg button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#bg-theme-seg button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    document.getElementById('bg-customcolor-wrap').style.display = b.dataset.v==='custom' ? '' : 'none';
+  });
+  document.getElementById('bg-go').onclick = async ()=>{
+    const useBackground = document.querySelector('#bg-choice button.on').dataset.v==='custom';
+    const overrides = { useBackground };
+    if(!useBackground){
+      overrides.theme = document.querySelector('#bg-theme-seg button.on').dataset.v;
+      overrides.customAccent = document.getElementById('bg-customcolor').value;
+    }
+    closeSheet();
+    await downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides);
+  };
+}
+
+/* ---------------- ADMIN: worst-case background preview ----------------
+   Builds a fully-packed synthetic 4-generation pedigree — max wins, long
+   names, every field filled — so an admin can confirm a background PDF
+   holds up before it ever reaches a real customer. Temporarily adds the
+   synthetic rabbits to the in-memory roster so the normal ancestor
+   lookups work, then removes them again once the PDF is built. */
+function worstCasePreviewRabbits(){
+  const longNames = ["Bramblewood's Midnight Constellation","Hollowcreek's Autumn Symphony","Fernwood's Copper Thunderbolt","Ironwood's Velvet Duchess","Prairiewind's Golden Sentinel","Marshgate's Obsidian Comet","Willowmere's Cinnamon Empress","Stonefield's Rustic Nobleman","Cloverdale's Amber Wanderer","Birchwood's Sable Aristocrat","Meadowlight's Chestnut Voyager","Ravenscroft's Ivory Sovereign","Thornfield's Umber Cavalier","Wildflower's Mahogany Countess","Foxglove's Slate Adventurer"];
+  const colors = ['Broken Black Tortoiseshell','Chestnut Agouti Frosted','Solid Blue Eyed White','Broken Chocolate Tort'];
+  let ni = 0;
+  const nextName = ()=> longNames[ni++ % longNames.length]+' '+uid();
+  const makeWins = (n)=> Array.from({length:n}, (_,i)=>({ id:uid(), award:['Best in Show','Best of Breed','Best Opposite Sex','Grand Champion Leg','1st Broken Group','Reserve Best in Show'][i%6], date: addDays(todayStr(), -30*(i+1)), show:['ARBA National Convention','Great Lakes Regional','State Fairgrounds Show','Midwest Classic'][i%4] }));
+  function makeRabbit(nameOverride, sex, tier){
+    const name = nameOverride || nextName();
+    return blankRabbit({
+      id:'zzpreview_'+uid(), name, sex, breed:'Holland Lop', dob: addDays(todayStr(), -900),
+      earNumber:'ZZ-PREVIEW-'+uid().toUpperCase(), weight:'3.85', color: colors[ni%colors.length],
+      registrationNumber:'ARBA-PREVIEW-99182', gcNumber:'GC-PREVIEW-14', legsWins:'4 legs',
+      wins: tier==='self'?makeWins(5): tier==='parent'?makeWins(2): tier==='grand'?makeWins(1):[]
+    });
+  }
+  const self = makeRabbit(null,'doe','self');
+  const sire = makeRabbit(null,'buck','parent'); const dam = makeRabbit(null,'doe','parent');
+  self.sireName = sire.name; self.damName = dam.name;
+  const grandNames = [];
+  [sire,dam].forEach(parent=>{
+    const gs = makeRabbit(null,'buck','grand'), gd = makeRabbit(null,'doe','grand');
+    parent.sireName = gs.name; parent.damName = gd.name;
+    grandNames.push(gs, gd);
+  });
+  const greatNames = [];
+  grandNames.forEach(gp=>{
+    const ggs = makeRabbit(null,'buck','great'), ggd = makeRabbit(null,'doe','great');
+    gp.sireName = ggs.name; gp.damName = ggd.name;
+    greatNames.push(ggs, ggd);
+  });
+  return [self, sire, dam, ...grandNames, ...greatNames];
+}
+async function previewWorstCaseBackgroundPDF(filename){
+  if(!filename){ showToast('Enter a filename first'); return; }
+  const synthetic = worstCasePreviewRabbits();
+  rabbits.push(...synthetic);
+  try{
+    const fakeProfile = { rabbitry_name:'Worst-Case Preview Rabbitry', first_name:'Preview', last_name:'Admin', website:'www.example.com', phone:'(555) 555-5555', pedigree_template:filename, pedigree_background:true };
+    const pdfBytes = await buildDynamicGenericPedigreePdfBytes(synthetic[0], fakeProfile, { useBackground:true, theme:'mono' });
+    const blob = new Blob([pdfBytes], { type:'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `worst-case-preview-${filename}.pdf`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }catch(err){
+    console.error(err);
+    showToast('Could not generate the preview — check console for details.');
+  }finally{
+    const ids = new Set(synthetic.map(x=>x.id));
+    rabbits = rabbits.filter(x=>!ids.has(x.id));
+  }
+}
+
 async function downloadOfficialPedigreePDF(r){
   try{
-    const { PDFDocument, StandardFonts } = PDFLib;
     const myProfileForPdf = await getMyPedigreeProfile();
     const templateName = myProfileForPdf.pedigree_template || 'generic';
+    const hasCustomBackground = !!(myProfileForPdf.pedigree_background && templateName!=='generic');
+    if(templateName==='generic' || hasCustomBackground){
+      if(hasCustomBackground) openPedigreeBackgroundChoiceSheet(r, myProfileForPdf);
+      else await downloadDynamicGenericPedigreePDF(r, myProfileForPdf);
+      return;
+    }
+    const { PDFDocument, StandardFonts } = PDFLib;
     const storageUrl = `${SUPABASE_URL}/storage/v1/object/public/pedigree-templates/${templateName}.pdf`;
     let existingBytes;
     try{
@@ -3704,11 +4137,13 @@ async function openAdminSheet(){
         <div class="card-top"><div>
           <div class="card-name">${esc(p.email||p.id)}</div>
           <div class="card-sub">${p.role==='admin'?'Admin':'Customer'} &middot; ${p.access_granted?'Access granted':'Access NOT granted'}${grantMap[p.id]?' &middot; support access active':''}</div>
-          <div class="card-sub" style="margin-top:8px;">Pedigree template: <b>${esc(p.pedigree_template||'generic')}</b></div>
+          <div class="card-sub" style="margin-top:8px;">Pedigree template: <b>${esc(p.pedigree_template||'generic')}</b>${p.pedigree_background?' &middot; background overlay':''}</div>
         </div></div>
         <div class="card-actions">
           <div class="field" style="flex:1 1 100%; margin-bottom:6px;"><input type="text" data-templateinput="${p.id}" placeholder="filename in Storage, e.g. cjm-legacy" value="${esc(p.pedigree_template||'')}"></div>
+          <label style="flex:1 1 100%; display:flex; align-items:center; gap:8px; font-size:13px; margin-bottom:6px;"><input type="checkbox" data-bgcheckbox="${p.id}" ${p.pedigree_background?'checked':''} style="width:18px; height:18px;"> This is a background PDF (draw pedigree on top, not a form to fill in)</label>
           <button class="btn btn-secondary btn-sm" data-savetemplate="${p.id}">Save template</button>
+          <button class="btn btn-secondary btn-sm" data-previewbg="${p.id}">Preview worst case</button>
           <button class="btn btn-secondary btn-sm" data-toggleaccess="${p.id}" data-current="${p.access_granted}">${p.access_granted?'Revoke access':'Grant access'}</button>
           <button class="btn btn-secondary btn-sm" data-viewlog="${p.id}" data-email="${esc(p.email||'')}">Activity log</button>
           ${grantMap[p.id]?`<button class="btn btn-primary btn-sm" data-viewcustomer="${p.id}" data-email="${esc(p.email||'')}">View account</button>`:''}
@@ -3721,11 +4156,17 @@ async function openAdminSheet(){
     showToast(!cur?'Access granted':'Access revoked');
     openAdminSheet();
   });
+  document.querySelectorAll('[data-previewbg]').forEach(b=>b.onclick=()=>{
+    const id=b.dataset.previewbg;
+    const input=document.querySelector(`[data-templateinput="${id}"]`);
+    previewWorstCaseBackgroundPDF((input.value||'').trim());
+  });
   document.querySelectorAll('[data-savetemplate]').forEach(b=>b.onclick=async ()=>{
     const id=b.dataset.savetemplate;
     const input=document.querySelector(`[data-templateinput="${id}"]`);
+    const bgCheckbox=document.querySelector(`[data-bgcheckbox="${id}"]`);
     const val=(input.value||'generic').trim();
-    await sb.from('profiles').update({pedigree_template:val}).eq('id',id);
+    await sb.from('profiles').update({pedigree_template:val, pedigree_background:!!(bgCheckbox&&bgCheckbox.checked)}).eq('id',id);
     showToast('Pedigree template updated'); openAdminSheet();
   });
   document.querySelectorAll('[data-viewcustomer]').forEach(b=>b.onclick=()=>adminViewCustomer(b.dataset.viewcustomer, b.dataset.email));
@@ -3803,7 +4244,7 @@ async function openMyInfoSheet(){
   };
 }
 async function openMoreSheet(){
-  const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
+  const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['pedigreesettings','Pedigree settings'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
   const activeGrant = viewingAsCustomer ? null : await checkMySupportAccess();
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
@@ -3834,6 +4275,7 @@ async function openMoreSheet(){
   document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.more;
     if(k==='add') openAddSheet();
+    else if(k==='pedigreesettings') openPedigreeSettingsSheet();
     else if(k==='merge') openMergeSheet();
     else if(k==='import') openImportCsvSheet();
     else if(k==='importpdf') openImportPedigreePdfSheet();
@@ -3883,6 +4325,281 @@ function renderForSale(main){
   main.innerHTML = h;
   attachCardEvents();
 }
+
+/* ---------------- MONEY (financials) ---------------- */
+const MONEY_PERIOD_LABELS = {thismonth:'This month', lastmonth:'Last month', thisyear:'This year', alltime:'All time'};
+function moneyActivityForPeriod(period){
+  const soldInPeriod = rabbits.filter(r=>r.status==='sold' && r.sale && r.sale.soldDate && inMoneyPeriod(r.sale.soldDate, period));
+  const soldWithPrice = soldInPeriod.filter(r=>parsePriceNum(r.sale.price) > 0);
+  const soldNoPrice = soldInPeriod.filter(r=>!(parsePriceNum(r.sale.price) > 0));
+  const expensesInPeriod = expenses.filter(e=>inMoneyPeriod(e.date, period));
+  return {soldWithPrice, soldNoPrice, expensesInPeriod};
+}
+function renderMoney(main){
+  const period = currentMoneyPeriod;
+  const {soldWithPrice, soldNoPrice, expensesInPeriod} = moneyActivityForPeriod(period);
+
+  const incomeTotal = soldWithPrice.reduce((sum,r)=>sum+parsePriceNum(r.sale.price),0);
+  const expenseTotal = expensesInPeriod.reduce((sum,e)=>sum+(Number(e.amount)||0),0);
+  const net = incomeTotal - expenseTotal;
+
+  const catMap = {};
+  expensesInPeriod.forEach(e=>{ const c=e.category||'Other'; catMap[c]=(catMap[c]||0)+(Number(e.amount)||0); });
+  const catRows = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+
+  const activity = [
+    ...soldWithPrice.map(r=>({type:'income', date:r.sale.soldDate, amount:parsePriceNum(r.sale.price), rabbitId:r.id, name:r.name, buyer:r.sale.buyer||''})),
+    ...expensesInPeriod.map(e=>({type:'expense', date:e.date, amount:Number(e.amount)||0, id:e.id, category:e.category||'Other', note:e.note||''}))
+  ].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
+
+  let h = `<div class="seg" id="moneyPeriodSeg">
+    ${Object.entries(MONEY_PERIOD_LABELS).map(([k,l])=>`<button data-period="${k}" class="${period===k?'on':''}">${l}</button>`).join('')}
+  </div>
+  <div class="stats" style="grid-template-columns:repeat(3,1fr); padding:0; margin:12px 0;">
+    <div class="stat" style="cursor:default;"><div class="n" style="color:var(--green);">${fmtMoney(incomeTotal)}</div><div class="l">INCOME</div></div>
+    <div class="stat" style="cursor:default;"><div class="n" style="color:var(--rust);">${fmtMoney(expenseTotal)}</div><div class="l">EXPENSES</div></div>
+    <div class="stat" style="cursor:default;"><div class="n" style="color:${net>=0?'var(--green)':'var(--rust)'};">${fmtMoney(net)}</div><div class="l">NET</div></div>
+  </div>
+  <div style="display:flex; gap:8px; margin-bottom:14px;">
+    <button class="btn btn-primary" id="moneyAddExpenseBtn" style="flex:1;">+ Add expense</button>
+    <button class="btn btn-secondary" id="moneyExportBtn" style="flex:1;">Export CSV</button>
+  </div>`;
+
+  if(soldNoPrice.length){
+    h += `<div class="section-label">SOLD, BUT NO PRICE YET</div>`;
+    h += soldNoPrice.map(r=>`<div class="card" data-openprofile="${r.id}">
+      <div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">Sold ${fmtDate(r.sale.soldDate)}${r.sale.buyer?' &middot; Sold to '+esc(r.sale.buyer):''}</div></div></div>
+      <div class="card-actions"><button class="btn btn-primary btn-sm" data-addprice="${r.id}">Add price</button></div>
+    </div>`).join('');
+  }
+
+  if(catRows.length){
+    h += `<div class="section-label">WHERE THE MONEY WENT</div><div class="card no-tap">`;
+    h += catRows.map(([name,amt],i)=>{
+      const pct = expenseTotal>0 ? Math.round((amt/expenseTotal)*100) : 0;
+      return `<div style="${i<catRows.length-1?'margin-bottom:10px;':''}">
+        <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:5px;"><span>${esc(name)}</span><span>${fmtMoney(amt)}</span></div>
+        <div style="background:var(--line); border-radius:4px; height:5px; overflow:hidden;"><div style="background:var(--gold); height:100%; width:${pct}%;"></div></div>
+      </div>`;
+    }).join('');
+    h += `</div>`;
+  }
+
+  h += `<div class="section-label">ACTIVITY</div>`;
+  if(!activity.length){
+    h += `<div class="empty">Nothing here for this period yet. Tap "+ Add expense" when you buy feed, wire, or supplies. Rabbit sales show up on their own once you mark a rabbit sold with a price.</div>`;
+  } else {
+    h += activity.map(a=>{
+      if(a.type==='income'){
+        return `<div class="card" data-openprofile="${a.rabbitId}" style="padding:12px 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div><div class="card-name" style="font-size:14px;">${esc(a.name)}</div><div class="card-sub">${a.buyer?('Sold to '+esc(a.buyer)+' &middot; '):''}${fmtDate(a.date)}</div></div>
+            <div style="color:var(--green); font-weight:600; white-space:nowrap;">+${fmtMoney(a.amount)}</div>
+          </div></div>`;
+      }
+      return `<div class="card" data-editexpense="${a.id}" style="padding:12px 14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+          <div><div class="card-name" style="font-size:14px;">${esc(a.category)}</div><div class="card-sub">${a.note?esc(a.note)+' &middot; ':''}${fmtDate(a.date)}</div></div>
+          <div style="color:var(--rust); font-weight:600; white-space:nowrap;">-${fmtMoney(a.amount)}</div>
+        </div></div>`;
+    }).join('');
+  }
+
+  main.innerHTML = h;
+  attachCardEvents();
+
+  document.querySelectorAll('#moneyPeriodSeg [data-period]').forEach(btn=>{
+    btn.onclick = ()=>{ currentMoneyPeriod = btn.dataset.period; render(); };
+  });
+  document.getElementById('moneyAddExpenseBtn').onclick = ()=>openAddExpenseSheet(null);
+  document.getElementById('moneyExportBtn').onclick = ()=>{
+    const rows = activity.map(a=> a.type==='income'
+      ? { date:a.date, type:'Income', category:'Rabbit sale', description:a.name+(a.buyer?' — Sold to '+a.buyer:''), amount:a.amount.toFixed(2) }
+      : { date:a.date, type:'Expense', category:a.category, description:a.note||'', amount:(-a.amount).toFixed(2) });
+    downloadCSV('herdnerd-financials-'+period+'.csv', toCSV(rows, ['date','type','category','description','amount']));
+  };
+  document.querySelectorAll('[data-addprice]').forEach(btn=>{
+    btn.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===btn.dataset.addprice); if(r) openAddPriceSheet(r); };
+  });
+  document.querySelectorAll('[data-editexpense]').forEach(el=>{
+    el.addEventListener('click',(ev)=>{
+      if(ev.target.closest('button')) return;
+      const ex=expenses.find(x=>x.id===el.dataset.editexpense); if(ex) openAddExpenseSheet(ex);
+    });
+  });
+}
+function openAddExpenseSheet(existing){
+  const e = existing || {};
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>${existing?'Edit expense':'Add expense'}</h2>
+    <div class="row2">
+      <div class="field"><label>Amount ($)</label><input type="number" id="f-exp-amt" value="${esc(e.amount||'')}" placeholder="0.00"></div>
+      <div class="field"><label>Date</label><input type="text" inputmode="numeric" id="f-exp-date" value="${esc(isoToSlash(e.date)||isoToSlash(todayStr()))}" placeholder="MM/DD/YYYY"></div>
+    </div>
+    <div class="field"><label>Category</label><select id="f-exp-cat">${EXPENSE_CATEGORIES.map(c=>`<option value="${esc(c)}" ${e.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="field"><label>Note (optional)</label><textarea id="f-exp-note">${esc(e.note||'')}</textarea></div>
+    <div class="sheet-actions">
+      <button class="btn btn-secondary" onclick="closeSheet()">Cancel</button>
+      <button class="btn btn-primary" id="f-exp-save">Save</button>
+    </div>
+    ${existing?'<button class="btn btn-danger" id="f-exp-delete" style="width:100%; margin-top:10px;">Delete</button>':''}`);
+  document.getElementById('f-exp-save').onclick = async ()=>{
+    const amt = parseFloat(document.getElementById('f-exp-amt').value);
+    if(!amt || amt<=0){ showToast('Enter an amount greater than 0'); return; }
+    const date = csvParseDate(document.getElementById('f-exp-date').value) || todayStr();
+    const category = document.getElementById('f-exp-cat').value;
+    const note = document.getElementById('f-exp-note').value.trim();
+    if(existing){
+      existing.amount=amt; existing.date=date; existing.category=category; existing.note=note;
+    } else {
+      expenses.push({ id:uid(), amount:amt, date, category, note });
+    }
+    await saveExpenses(); closeSheet(); render(); showToast(existing?'Expense updated':'Expense added');
+  };
+  const delBtn = document.getElementById('f-exp-delete');
+  if(delBtn) delBtn.onclick = ()=>{
+    armConfirm(delBtn, 'Tap again to confirm', async ()=>{
+      expenses = expenses.filter(x=>x.id!==existing.id);
+      await saveExpenses(); closeSheet(); render(); showToast('Expense deleted');
+    });
+  };
+}
+function openAddPriceSheet(r){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Add sale price — ${esc(r.name)}</h2>
+    <div class="card-sub" style="margin-bottom:12px;">Sold ${fmtDate(r.sale.soldDate)}${r.sale.buyer?' &middot; Sold to '+esc(r.sale.buyer):''}</div>
+    <div class="field"><label>Sale price ($)</label><input type="number" id="f-price-add" value="${esc(r.sale.price||'')}" placeholder="150"></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-price-save">Save</button></div>`);
+  document.getElementById('f-price-save').onclick = async ()=>{
+    const v = document.getElementById('f-price-add').value.trim();
+    if(!v || parsePriceNum(v)<=0){ showToast('Enter a price greater than 0'); return; }
+    r.sale.price = v;
+    await saveData(); closeSheet(); render(); showToast(r.name+' price added');
+  };
+}
+
+/* ---------------- SHOW WINS ---------------- */
+function openWinsSheet(r, origin){
+  r.wins = r.wins || [];
+  const rows = r.wins.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>${esc(r.name)} — Show wins</h2>
+    <button class="btn btn-secondary" style="width:100%; margin-bottom:12px;" id="win-add-btn">+ Add win</button>
+    ${rows.length ? rows.map(w=>`<div class="card" data-editwin="${w.id}">
+        <div class="card-top"><div><div class="card-name">${esc(w.award||'Win')}</div><div class="card-sub">${fmtDate(w.date)}${w.show?' &middot; '+esc(w.show):''}</div></div></div>
+      </div>`).join('') : '<div class="empty">No wins logged yet. Tap "+ Add win" after a show.</div>'}
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Close</button></div>`);
+  document.getElementById('win-add-btn').onclick = ()=>openAddWinSheet(r, null, ()=>openWinsSheet(r, origin));
+  document.querySelectorAll('[data-editwin]').forEach(el=>{
+    el.onclick = ()=>{ const w=r.wins.find(x=>x.id===el.dataset.editwin); if(w) openAddWinSheet(r, w, ()=>openWinsSheet(r, origin)); };
+  });
+}
+function openAddWinSheet(r, existing, back){
+  const w = existing || {};
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>${existing?'Edit win':'Add win'}</h2>
+    <div class="field"><label>Award</label><input id="f-win-award" value="${esc(w.award||'')}" placeholder="BOB, BOS, Grand Champion Leg…"></div>
+    <div class="row2">
+      <div class="field"><label>Date</label><input type="text" inputmode="numeric" id="f-win-date" value="${esc(isoToSlash(w.date)||isoToSlash(todayStr()))}" placeholder="MM/DD/YYYY"></div>
+      <div class="field"><label>Show</label><input id="f-win-show" value="${esc(w.show||'')}" list="wins-shows-datalist" placeholder="Show name"></div>
+    </div>
+    <datalist id="wins-shows-datalist">${shows.map(s=>`<option value="${esc(s.name)}">`).join('')}</datalist>
+    <div class="sheet-actions">
+      <button class="btn btn-secondary" onclick="closeSheet()">Cancel</button>
+      <button class="btn btn-primary" id="f-win-save">Save</button>
+    </div>
+    ${existing?'<button class="btn btn-danger" id="f-win-delete" style="width:100%; margin-top:10px;">Delete</button>':''}`);
+  document.getElementById('f-win-save').onclick = ()=>{
+    const award = document.getElementById('f-win-award').value.trim();
+    if(!award){ showToast('Enter an award'); return; }
+    const date = csvParseDate(document.getElementById('f-win-date').value) || todayStr();
+    const show = document.getElementById('f-win-show').value.trim();
+    if(existing){ existing.award=award; existing.date=date; existing.show=show; }
+    else { r.wins = r.wins||[]; r.wins.push({id:uid(), award, date, show}); }
+    saveData(); closeSheet(); if(back) back();
+  };
+  const delBtn = document.getElementById('f-win-delete');
+  if(delBtn) delBtn.onclick = ()=>{
+    armConfirm(delBtn, 'Tap again to confirm', ()=>{
+      r.wins = r.wins.filter(x=>x.id!==existing.id);
+      saveData(); closeSheet(); if(back) back();
+    });
+  };
+}
+
+/* ---------------- PEDIGREE SETTINGS (logo, contact, print theme, field toggles) ---------------- */
+async function openPedigreeSettingsSheet(){
+  const s = pedigreeSettings;
+  const myProfileForPdf = await getMyPedigreeProfile();
+  const hasCustomBg = !!(myProfileForPdf.pedigree_background && myProfileForPdf.pedigree_template && myProfileForPdf.pedigree_template!=='generic');
+  const fieldRows = [['dob','Date of birth'],['reg','Registration #'],['gc','GC #'],['ear','Ear #'],['color','Color'],['weight','Weight']];
+  const narrowedTheme = (hasCustomBg && s.printTheme==='sex') ? 'mono' : s.printTheme;
+  const themeButtonsHTML = hasCustomBg
+    ? `<button type="button" data-v="mono" class="${narrowedTheme==='mono'?'on':''}">Black</button>
+       <button type="button" data-v="custom" class="${narrowedTheme==='custom'?'on':''}">Custom color</button>`
+    : `<button type="button" data-v="mono" class="${s.printTheme==='mono'?'on':''}">Black &amp; white</button>
+       <button type="button" data-v="sex" class="${s.printTheme==='sex'?'on':''}">Pink / blue by sex</button>
+       <button type="button" data-v="custom" class="${s.printTheme==='custom'?'on':''}">Custom</button>`;
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Pedigree settings</h2>
+    <div class="card-sub" style="margin-bottom:12px;">Controls what shows up on your printed pedigree — your logo, contact info, print colors, and which fields appear. Your name, rabbitry name, phone, and website come from <b>More &rarr; My info</b>.</div>
+    ${hasCustomBg?'<div class="card-sub" style="background:var(--card); border:1px solid var(--line-strong); border-radius:10px; padding:10px 12px; margin-bottom:12px;">This account has a custom background PDF on file, so print colors are limited to what stays legible on it.</div>':''}
+    <div class="field"><label>Logo</label>
+      <div style="display:flex; align-items:center; gap:10px;">
+        ${s.logoDataUrl?`<img src="${s.logoDataUrl}" style="width:48px; height:48px; object-fit:contain; border:1px solid var(--line-strong); border-radius:8px;">`:''}
+        <button type="button" class="btn btn-secondary btn-sm" id="ps-logo-btn">${s.logoDataUrl?'Replace logo':'Upload logo'}</button>
+        ${s.logoDataUrl?'<button type="button" class="btn btn-secondary btn-sm" id="ps-logo-remove">Remove</button>':''}
+      </div>
+      <input type="file" id="ps-logo-file" accept="image/*" style="display:none;">
+    </div>
+    <div class="field"><label>Tagline (optional)</label><input id="ps-tagline" value="${esc(s.tagline||'')}" placeholder="Est. 2021 &middot; Purebred &amp; Proud"></div>
+    <div class="field"><label>Instagram / Facebook</label><input id="ps-social" value="${esc(s.social||'')}" placeholder="@yourrabbitry"></div>
+    <div class="field"><label>Print colors</label>
+      <div class="seg" id="ps-theme">${themeButtonsHTML}</div>
+    </div>
+    <div class="field" id="ps-customwrap" style="${narrowedTheme==='custom'?'':'display:none;'}"><label>Custom accent color</label><input type="color" id="ps-customcolor" value="${esc(s.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
+    <div class="field"><label>Fields to print</label>
+      <div style="display:flex; flex-direction:column; gap:2px;">
+        ${fieldRows.map(([k,l])=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;"><input type="checkbox" id="ps-field-${k}" ${s.fields[k]!==false?'checked':''} style="width:18px; height:18px;"> ${l}</label>`).join('')}
+      </div>
+    </div>
+    <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="ps-cert" ${s.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="ps-save">Save</button></div>`);
+
+  document.getElementById('ps-logo-btn').onclick = ()=> document.getElementById('ps-logo-file').click();
+  document.getElementById('ps-logo-file').onchange = ()=>{
+    const file = document.getElementById('ps-logo-file').files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = async ()=>{ pedigreeSettings.logoDataUrl = reader.result; await savePedigreeSettings(); closeSheet(); openPedigreeSettingsSheet(); showToast('Logo updated'); };
+    reader.readAsDataURL(file);
+  };
+  const removeBtn = document.getElementById('ps-logo-remove');
+  if(removeBtn) removeBtn.onclick = async ()=>{ pedigreeSettings.logoDataUrl = null; await savePedigreeSettings(); closeSheet(); openPedigreeSettingsSheet(); };
+
+  document.querySelectorAll('#ps-theme button').forEach(b=>b.onclick=()=>{
+    document.querySelectorAll('#ps-theme button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    document.getElementById('ps-customwrap').style.display = b.dataset.v==='custom' ? '' : 'none';
+  });
+
+  document.getElementById('ps-save').onclick = async ()=>{
+    pedigreeSettings.tagline = document.getElementById('ps-tagline').value.trim();
+    pedigreeSettings.social = document.getElementById('ps-social').value.trim();
+    pedigreeSettings.printTheme = document.querySelector('#ps-theme button.on').dataset.v;
+    pedigreeSettings.customAccent = document.getElementById('ps-customcolor').value;
+    pedigreeSettings.hasCertification = document.getElementById('ps-cert').checked;
+    pedigreeSettings.fields = {
+      dob: document.getElementById('ps-field-dob').checked,
+      reg: document.getElementById('ps-field-reg').checked,
+      gc: document.getElementById('ps-field-gc').checked,
+      ear: document.getElementById('ps-field-ear').checked,
+      color: document.getElementById('ps-field-color').checked,
+      weight: document.getElementById('ps-field-weight').checked
+    };
+    await savePedigreeSettings(); closeSheet(); showToast('Pedigree settings saved');
+  };
+}
+
 function csvEscape(v){
   if(v===null||v===undefined) return '';
   const s=String(v);
@@ -3924,14 +4641,14 @@ function downloadCSV(filename, csvText){
   URL.revokeObjectURL(url);
 }
 
-const RABBIT_CSV_COLUMNS = ['id','name','sex','breed','color','earNumber','dob','weight','legsWins','registrationNumber',
+const RABBIT_CSV_COLUMNS = ['id','name','sex','breed','color','earNumber','dob','weight','legsWins','registrationNumber','gcNumber',
   'sireName','damName','status','partner','bredDate','dueDate','litterBornDate','weanDate','sellDate','rebreedWeeks',
   'notes','flag','alias','forSale','graduatedDate',
   'sale_buyer','sale_price','sale_deposit','sale_depositDate','sale_pickupDate','sale_soldDate'];
 function rabbitToCsvRow(r){
   const s=r.sale||{};
   return { id:r.id, name:r.name, sex:r.sex, breed:r.breed||'', color:r.color||'', earNumber:r.earNumber||'', dob:r.dob||'',
-    weight:r.weight||'', legsWins:r.legsWins||'', registrationNumber:r.registrationNumber||'', sireName:r.sireName||'', damName:r.damName||'',
+    weight:r.weight||'', legsWins:r.legsWins||'', registrationNumber:r.registrationNumber||'', gcNumber:r.gcNumber||'', sireName:r.sireName||'', damName:r.damName||'',
     status:r.status, partner:r.partner||'', bredDate:r.bredDate||'', dueDate:r.dueDate||'', litterBornDate:r.litterBornDate||'',
     weanDate:r.weanDate||'', sellDate:r.sellDate||'', rebreedWeeks:r.rebreedWeeks||'', notes:r.notes||'', flag:r.flag||'', alias:r.alias||'',
     forSale:r.forSale?'yes':'no', graduatedDate:r.graduatedDate||'',
@@ -3944,7 +4661,7 @@ function csvRowToRabbit(row, existing){
   return Object.assign(base, {
     id: row.id || base.id, name: row.name, sex: row.sex||'doe', breed: row.breed, color: row.color,
     earNumber: row.earNumber, dob: row.dob||null, weight: row.weight, legsWins: row.legsWins,
-    registrationNumber: row.registrationNumber, sireName: row.sireName, damName: row.damName,
+    registrationNumber: row.registrationNumber, gcNumber: row.gcNumber||'', sireName: row.sireName, damName: row.damName,
     status: row.status||'open', partner: row.partner||null, bredDate: row.bredDate||null, dueDate: row.dueDate||null,
     litterBornDate: row.litterBornDate||null, weanDate: row.weanDate||null, sellDate: row.sellDate||null,
     rebreedWeeks: Number(row.rebreedWeeks)||3, notes: row.notes||'', flag: row.flag||'', alias: row.alias||'',
@@ -3957,19 +4674,21 @@ const BREEDING_CSV_COLUMNS = ['doeName','partner','bredDate','outcome','litterBo
 const PLANNED_CSV_COLUMNS = ['doeName','buckName','targetDate','notes'];
 const EVENTS_CSV_COLUMNS = ['title','date'];
 const SHOWS_CSV_COLUMNS = ['name','entryDeadline','showDate'];
+const EXPENSES_CSV_COLUMNS = ['date','category','amount','note'];
 
 function renderBackup(main){
   main.innerHTML=`
     <div class="section-label">DOWNLOAD YOUR DATA (CSV)</div>
-    <div class="card no-tap"><div class="card-detail">Downloads plain spreadsheet files you can open in Excel, Numbers, or Google Sheets — one for your rabbits, and separate ones for breeding history, planned breedings, calendar events, and shows. Photos, weight logs, and note logs aren't included in CSV, since spreadsheets can't hold that kind of detail.</div>
+    <div class="card no-tap"><div class="card-detail">Downloads plain spreadsheet files you can open in Excel, Numbers, or Google Sheets — one for your rabbits, and separate ones for breeding history, planned breedings, calendar events, shows, and expenses. Photos, weight logs, and note logs aren't included in CSV, since spreadsheets can't hold that kind of detail.</div>
       <div class="card-actions"><button class="btn btn-primary" id="bk-download-all">Download all as CSV</button></div></div>
     <div class="section-label">RESTORE FROM CSV</div>
-    <div class="card no-tap"><div class="card-detail">Upload the <b>rabbits.csv</b> file from a previous download to restore your rabbit list. This matches by ID where possible, so restoring won't duplicate rabbits you already have. Optionally add the other CSV files too. <b>Photos, weight logs, and note logs can't be restored this way.</b></div>
+    <div class="card no-tap"><div class="card-detail">Upload the <b>rabbits.csv</b> file from a previous download to restore your rabbit list. This matches by ID where possible, so restoring won't duplicate rabbits you already have. Optionally add the other CSV files too, including expenses. <b>Photos, weight logs, and note logs can't be restored this way.</b></div>
       <div class="field" style="margin-top:10px;"><label>rabbits.csv (required)</label><input type="file" id="bk-in-rabbits" accept=".csv"></div>
       <div class="field"><label>breeding_history.csv (optional)</label><input type="file" id="bk-in-breeding" accept=".csv"></div>
       <div class="field"><label>planned.csv (optional)</label><input type="file" id="bk-in-planned" accept=".csv"></div>
       <div class="field"><label>events.csv (optional)</label><input type="file" id="bk-in-events" accept=".csv"></div>
       <div class="field"><label>shows.csv (optional)</label><input type="file" id="bk-in-shows" accept=".csv"></div>
+      <div class="field"><label>expenses.csv (optional)</label><input type="file" id="bk-in-expenses" accept=".csv"></div>
       <div class="card-actions"><button class="btn btn-danger" id="bk-restore">Restore from these files</button></div></div>`;
 
   document.getElementById('bk-download-all').onclick = ()=>{
@@ -3983,7 +4702,8 @@ function renderBackup(main){
     downloadCSV('planned.csv', toCSV(planned.map(p=>({doeName:p.doeName||'', buckName:p.buckName||'', targetDate:p.targetDate||'', notes:p.notes||''})), PLANNED_CSV_COLUMNS));
     downloadCSV('events.csv', toCSV(customEvents.map(e=>({title:e.title||'', date:e.date||''})), EVENTS_CSV_COLUMNS));
     downloadCSV('shows.csv', toCSV(shows.map(s=>({name:s.name||'', entryDeadline:s.entryDeadline||'', showDate:s.showDate||''})), SHOWS_CSV_COLUMNS));
-    showToast('Downloading 5 CSV files');
+    downloadCSV('expenses.csv', toCSV(expenses.map(e=>({date:e.date||'', category:e.category||'', amount:e.amount||'', note:e.note||''})), EXPENSES_CSV_COLUMNS));
+    showToast('Downloading 6 CSV files');
   };
 
   function readFile(input){
@@ -4037,9 +4757,17 @@ function renderBackup(main){
       if(showsText){
         parseCSV(showsText).forEach(row=>{ shows.push({ id:uid(), name:row.name||'', entryDeadline:row.entryDeadline||todayStr(), showDate:row.showDate||'' }); });
       }
+      const expensesText = await readFile(document.getElementById('bk-in-expenses'));
+      if(expensesText){
+        parseCSV(expensesText).forEach(row=>{
+          const amt = Number(row.amount)||0;
+          const isDup = expenses.some(x=>x.date===row.date && x.category===row.category && Number(x.amount)===amt && (x.note||'')===(row.note||''));
+          if(!isDup) expenses.push({ id:uid(), date:row.date||todayStr(), category:row.category||'Other', amount:amt, note:row.note||'' });
+        });
+      }
 
       ensureRabbitFieldDefaults();
-      saveData(); savePlanned(); saveEvents(); saveShows();
+      saveData(); savePlanned(); saveEvents(); saveShows(); saveExpenses();
       currentTab='home'; render(); showToast('Restored from CSV');
     }catch(e){ console.error(e); showToast("Couldn't read that file — check it's a CSV exported from here."); }
   };
