@@ -3748,37 +3748,37 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   let footerH, footerTopY;
 
   if(usingBackground){
-    const boxW = 240, boxX = W-M-boxW, contentW = boxW-20;
-    const contactLinesW = contactLine ? wrapTextBalanced(contactLine, fonts.sans, 7, contentW) : [];
-    const certLinesW = pedigreeSettings2.hasCertification ? wrapTextBalanced('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', fonts.serifItalic, 8, contentW) : [];
+    const boxW = 200, boxX = W-M-boxW, contentW = boxW-16;
+    const contactLinesW = contactLine ? wrapTextBalanced(contactLine, fonts.sans, 6, contentW) : [];
+    const certLinesW = pedigreeSettings2.hasCertification ? wrapTextBalanced('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', fonts.serifItalic, 6.5, contentW) : [];
     const hasSigRow = pedigreeSettings2.hasCertification;
     let boxH = 0;
     if(contactLinesW.length || certLinesW.length){
-      boxH = 14;
-      if(contactLinesW.length) boxH += contactLinesW.length*9 + 8;
-      if(certLinesW.length) boxH += certLinesW.length*10 + 16;
-      if(hasSigRow) boxH += 10 + 20 + 10;
-      boxH += 12;
+      boxH = 8;
+      if(contactLinesW.length) boxH += contactLinesW.length*7 + 4;
+      if(certLinesW.length) boxH += certLinesW.length*7.5 + 6;
+      if(hasSigRow) boxH += 8 + 10 + 8;
+      boxH += 6;
     }
     footerH = boxH; footerTopY = M+boxH;
     if(boxH>0){
       page.drawRectangle({ x:boxX, y:M, width:boxW, height:boxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
-      let cy = M+boxH-14;
-      contactLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.sans, 7, gray); cy -= 9; });
-      if(contactLinesW.length) cy -= 8;
-      certLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.serifItalic, 8, rgb(0.2,0.2,0.2)); cy -= 10; });
-      if(certLinesW.length) cy -= 16;
+      let cy = M+boxH-8;
+      contactLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.sans, 6, gray); cy -= 7; });
+      if(contactLinesW.length) cy -= 4;
+      certLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.serifItalic, 6.5, rgb(0.2,0.2,0.2)); cy -= 7.5; });
+      if(certLinesW.length) cy -= 6;
       if(hasSigRow){
-        const sigSize = 7.5;
+        const sigSize = 6.5;
         const sigLabelW = textWidth('Signature:', fonts.sans, sigSize);
         const sigBaseline = cy - sigSize*0.82;
-        drawText('Signature:', boxX+10, cy, fonts.sans, sigSize, gray);
-        page.drawLine({start:{x:boxX+10+sigLabelW+5,y:sigBaseline},end:{x:boxX+boxW-10,y:sigBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
-        cy -= 20;
+        drawText('Signature:', boxX+8, cy, fonts.sans, sigSize, gray);
+        page.drawLine({start:{x:boxX+8+sigLabelW+4,y:sigBaseline},end:{x:boxX+boxW-8,y:sigBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        cy -= 10;
         const dateLabelW = textWidth('Date:', fonts.sans, sigSize);
         const dateBaseline = cy - sigSize*0.82;
-        drawText('Date:', boxX+10, cy, fonts.sans, sigSize, gray);
-        page.drawLine({start:{x:boxX+10+dateLabelW+5,y:dateBaseline},end:{x:boxX+boxW-10,y:dateBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        drawText('Date:', boxX+8, cy, fonts.sans, sigSize, gray);
+        page.drawLine({start:{x:boxX+8+dateLabelW+4,y:dateBaseline},end:{x:boxX+boxW-8,y:dateBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
       }
     }
   } else {
@@ -3801,7 +3801,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   }
 
   // tree
-  const treeTop = headerBottomY-12, treeBottom = footerTopY+10, treeH = treeTop-treeBottom;
+  const treeTop = headerBottomY-12, treeBottom = footerTopY+16, treeH = treeTop-treeBottom;
   const colGap=12, colW=(W-2*M-3*colGap)/4;
   const col1X=M, col2X=col1X+colW+colGap, col3X=col2X+colW+colGap, col4X=col3X+colW+colGap;
 
