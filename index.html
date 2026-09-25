@@ -1573,9 +1573,20 @@ const PEDIGREE_SETTINGS_KEY = 'pedigreeSettings_v1';
 function defaultPedigreeSettings(){
   return {
     logoDataUrl:null, social:'', tagline:'',
-    printTheme:'sex', customAccent:'#c6a15b', hasCertification:true, footerStyle:'plain',
+    printTheme:'mono', customAccent:'#c6a15b', hasCertification:true, footerStyle:'plain',
+    nameFont:'cormorant', titleFont:'cormorant', watermarkEnabled:false, watermarkText:'', watermarkFont:'script',
     fields:{ dob:true, reg:true, gc:true, ear:true, color:true, weight:true }
   };
+}
+const FONT_OPTIONS = [
+  ['cormorant','Cormorant'], ['cinzel','Cinzel'], ['playfair','Playfair'], ['libre','Libre Baskerville'],
+  ['dmserif','DM Serif'], ['montserrat','Montserrat'], ['jost','Jost'],
+  ['script','Great Vibes'], ['allura','Allura'], ['alexbrush','Alex Brush'],
+  ['blackletter','Blackletter'], ['handwritten','Handwritten']
+];
+function fontSegHTML(id, current, fallback){
+  const cur = current || fallback || 'cormorant';
+  return `<div class="seg" id="${id}" style="flex-wrap:wrap;">${FONT_OPTIONS.map(([v,l])=>`<button type="button" data-v="${v}" class="${cur===v?'on':''}">${esc(l)}</button>`).join('')}</div>`;
 }
 let pedigreeSettings = defaultPedigreeSettings();
 const THEME_KEY = 'theme_v1';
@@ -2035,7 +2046,7 @@ function cardHTML(r, forceUrgent, origin){
   else if(isArchived(r)) a=`<button class="btn btn-primary" data-act="unarchive" data-id="${r.id}">Return to roster</button>`;
   else if(r.sex==='doe') a=`<button class="btn btn-primary" data-act="bred" data-id="${r.id}">Record breeding</button><button class="btn btn-secondary btn-sm" data-act="plan" data-id="${r.id}">Plan a breeding</button>`;
   else a='';
-  a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button><button class="btn btn-secondary btn-sm" data-act="wins" data-id="${r.id}">Wins</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
+  a+=`<button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="wins" data-id="${r.id}">Wins</button><button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>`;
   return `<div class="card ${urgent?'urgent':''}" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div>
     <div class="card-detail">${detail}</div>${flag}<div class="card-actions">${a}</div></div>`;
 }
@@ -2056,7 +2067,7 @@ function buckCardHTML(r){
   return `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div></div>
     <div class="card-detail">${txt}</div>
     <div class="card-actions">
-      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button>
+      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button>
       <button class="btn btn-secondary btn-sm" data-act="history" data-id="${r.id}">History</button>
       <button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>
     </div></div>`;
@@ -2072,7 +2083,7 @@ function juniorCardHTML(r){
     <div class="card-detail">${d}</div>${r.flag?`<div class="flag">${esc(r.flag)}</div>`:''}
     <div class="card-actions">
       <button class="btn btn-secondary btn-sm" data-act="graduate" data-id="${r.id}">Move to roster</button>
-      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button>
+      <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button>
       <button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>
     </div></div>`;
 }
@@ -2124,7 +2135,7 @@ function ancestorCardHTML(r){
   const b=[]; if(r.breed)b.push(r.breed); if(r.color)b.push(r.color); if(r.earNumber)b.push('Ear# '+r.earNumber); if(r.weight)b.push(r.weight+' lbs'); if(r.legsWins)b.push(r.legsWins);
   return `<div class="card"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${esc(b.join(' · '))||'No details yet'}</div></div></div>
     ${(r.sireName||r.damName)?`<div class="card-detail">Sire: ${esc(r.sireName||'?')} &middot; Dam: ${esc(r.damName||'?')}</div>`:''}
-    <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit details</button></div></div>`;
+    <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit details</button></div></div>`;
 }
 function plannedCardHTML(p){
   const doe=rabbits.find(r=>r.id===p.doeId), buck=rabbits.find(r=>r.id===p.buckId);
@@ -2755,9 +2766,23 @@ function openKindledSheet(r, editing){
     </div>
     <div class="field"><label>Rebreed target</label>
       <input type="date" id="f-rebreed-date" value="${esc(r.rebreedDate || addDays(editing&&r.litterBornDate?r.litterBornDate:todayStr(), 28))}"></div>
-    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>
+    ${editing?'<div class="sheet-actions"><button class="btn btn-danger" id="f-deletelitter" style="flex:1;">Delete litter</button></div>':''}`);
   renderKitRows();
   document.getElementById('f-addkit').onclick=()=>{ kitRows.push({id:uid(), sex:'doe', color:'', forSale:false, individualId:null}); renderKitRows(); };
+  const delLitterBtn = document.getElementById('f-deletelitter');
+  if(delLitterBtn) delLitterBtn.onclick=()=>{
+    armConfirm(delLitterBtn, 'Tap again to confirm', ()=>{
+      r.litterBornDate=null; r.litterKits=[]; r.litterDead=null; r.weanDate=null; r.sellDate=null; r.rebreedDate=null; r.lastLitterSummary='';
+      if(r.breedingHistory && r.breedingHistory.length){
+        const entry = r.breedingHistory[r.breedingHistory.length-1];
+        if(entry && entry.outcome==='litter'){ entry.outcome=null; entry.litterBornDate=null; entry.litterKits=null; entry.litterDead=null; entry.weanDate=null; entry.sellDate=null; }
+      }
+      if(r.bredDate){ r.status='pregnant'; r.dueDate=addDays(r.bredDate,31); }
+      else { r.status='open'; r.dueDate=null; }
+      saveData(); closeSheet(); render(); showToast('Litter deleted');
+    });
+  };
   document.getElementById('f-save').onclick=()=>{
     const born=csvParseDate(document.getElementById('f-born').value)||todayStr();
     const doa=+document.getElementById('f-doa').value||0, pea=+document.getElementById('f-peanut').value||0, pas=+document.getElementById('f-passed').value||0;
@@ -3531,7 +3556,7 @@ const CONTACT_FIELD_IDS = { RABBITRY_NAME:'rabbitry_name', BREEDER_NAME:'breeder
 let _pedigreeFontBytesPromise = null;
 async function loadPedigreeFontBytes(){
   if(_pedigreeFontBytesPromise) return _pedigreeFontBytesPromise;
-  const names = ['CormorantGaramond-SemiBold.ttf','CormorantGaramond-MediumItalic.ttf','PublicSans-Regular.ttf','PublicSans-SemiBold.ttf','JetBrainsMono-Medium.ttf','JetBrainsMono-Bold.ttf'];
+  const names = ['CormorantGaramond-SemiBold.ttf','CormorantGaramond-MediumItalic.ttf','PublicSans-Regular.ttf','PublicSans-SemiBold.ttf','JetBrainsMono-Medium.ttf','JetBrainsMono-Bold.ttf','PlayfairDisplay-Bold.ttf','Cinzel-Bold.ttf','GreatVibes-Regular.ttf','LibreBaskerville-Bold.ttf','DMSerifDisplay-Regular.ttf','Montserrat-Bold.ttf','Jost-SemiBold.ttf','Allura-Regular.ttf','AlexBrush-Regular.ttf','UnifrakturMaguntia-Regular.ttf','Caveat-Bold.ttf'];
   _pedigreeFontBytesPromise = Promise.all(names.map(n=>fetch('fonts/'+n).then(res=>{
     if(!res.ok) throw new Error('Font not found: '+n);
     return res.arrayBuffer();
@@ -3545,10 +3570,9 @@ function dataUrlToBytes(dataUrl){
   for(let i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
   return bytes;
 }
-function pedigreeAccentColorFor(theme, customAccent, sex){
-  if(theme==='mono') return '#141414';
+function pedigreeAccentColorFor(theme, customAccent){
   if(theme==='custom') return customAccent || '#c6a15b';
-  return sex==='doe' ? '#b5507c' : '#3d6ea5';
+  return '#141414';
 }
 function pedigreeSpaceEvenly(boxHeights, availH){
   const total = boxHeights.reduce((a,b)=>a+b,0);
@@ -3590,7 +3614,7 @@ function pedigreeFieldLine(item, fields, includeGC){
 }
 async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides){
   overrides = overrides || {};
-  const { PDFDocument, rgb } = PDFLib;
+  const { PDFDocument, rgb, degrees } = PDFLib;
   const hexToRgb = (hex)=>{ hex=hex.replace('#',''); const n=parseInt(hex,16); return rgb(((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255); };
 
   const W=792, H=612, M=30;
@@ -3618,11 +3642,20 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     page = pdfDoc.addPage([W,H]);
   }
   pdfDoc.registerFontkit(fontkit);
-  const [b1,b2,b3,b4,b5,b6] = await loadPedigreeFontBytes();
-  const [serifBold, serifItalic, sans, sansBold, mono, monoBold] = await Promise.all(
-    [b1,b2,b3,b4,b5,b6].map(b=>pdfDoc.embedFont(b))
+  const [b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15,b16,b17] = await loadPedigreeFontBytes();
+  const [serifBold, serifItalic, sans, sansBold, mono, monoBold, playfair, cinzel, script, libre, dmserif, montserrat, jost, allura, alexbrush, blackletter, handwritten] = await Promise.all(
+    [b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15,b16,b17].map(b=>pdfDoc.embedFont(b))
   );
-  const fonts = { serifBold, serifItalic, sans, sansBold, mono, monoBold };
+  const fonts = { serifBold, serifItalic, sans, sansBold, mono, monoBold, playfair, cinzel, script, libre, dmserif, montserrat, jost, allura, alexbrush, blackletter, handwritten };
+  const TITLE_FONTS = {
+    cormorant: fonts.serifBold, cinzel: fonts.cinzel, playfair: fonts.playfair, libre: fonts.libre,
+    dmserif: fonts.dmserif, montserrat: fonts.montserrat, jost: fonts.jost,
+    script: fonts.script, allura: fonts.allura, alexbrush: fonts.alexbrush,
+    blackletter: fonts.blackletter, handwritten: fonts.handwritten
+  };
+  const TITLE_FONT_SIZE_ADJUST = { script:1.3, allura:1.35, alexbrush:1.35, dmserif:0.95, blackletter:1.15, handwritten:1.2 };
+  function titleFontFor(key){ return TITLE_FONTS[key] || fonts.serifBold; }
+  function titleSizeFor(key, baseSize){ return baseSize * (TITLE_FONT_SIZE_ADJUST[key] || 1); }
 
   function textWidth(text, font, size){ return font.widthOfTextAtSize(text, size); }
   function drawText(text, x, yTop, font, size, color){ page.drawText(text, { x, y: yTop - size*0.82, size, font, color }); }
@@ -3661,18 +3694,37 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   }
 
   const pedigreeSettings2 = overrides.settings || pedigreeSettings;
-  const theme = overrides.theme || pedigreeSettings2.printTheme || 'sex';
+  const theme = overrides.theme || pedigreeSettings2.printTheme || 'mono';
   const customAccentVal = overrides.customAccent || pedigreeSettings2.customAccent;
-  const accentHex = pedigreeAccentColorFor(theme, customAccentVal, r.sex);
+  const accentHex = pedigreeAccentColorFor(theme, customAccentVal);
   const accent = hexToRgb(accentHex);
   const black = rgb(0.078,0.078,0.078), gray = rgb(0.33,0.33,0.33), white = rgb(1,1,1);
   const fields = pedigreeSettings2.fields || {};
 
   if(!usingBackground) page.drawRectangle({ x:0, y:0, width:W, height:H, color:white });
 
+  if(pedigreeSettings2.watermarkEnabled){
+    const wmText = sanitizeForPdf(pedigreeSettings2.watermarkText || myProfileForPdf.rabbitry_name || 'PEDIGREE');
+    if(wmText){
+      const wmFont = titleFontFor(pedigreeSettings2.watermarkFont || 'script');
+      const angle = 28;
+      const rad = angle * Math.PI/180;
+      let wmSize = titleSizeFor(pedigreeSettings2.watermarkFont || 'script', 80);
+      const maxSpan = Math.sqrt(W*W+H*H) * 0.58;
+      while(wmSize>20 && wmFont.widthOfTextAtSize(wmText, wmSize) > maxSpan) wmSize -= 2;
+      const textW = wmFont.widthOfTextAtSize(wmText, wmSize);
+      const cx = W/2, cy = H/2;
+      const startX = cx - (textW/2)*Math.cos(rad);
+      const startY = cy - (textW/2)*Math.sin(rad);
+      page.drawText(wmText, { x:startX, y:startY, size:wmSize, font:wmFont, color:accent, opacity:0.24, rotate:degrees(angle) });
+    }
+  }
+
   // header
   let hx = M;
-  const headerTopY = H-M;
+  const titleH = 24;
+  drawCenteredText('PEDIGREE', W/2, H-M, titleFontFor(pedigreeSettings2.titleFont), titleSizeFor(pedigreeSettings2.titleFont, 18), accent);
+  const headerTopY = H-M-titleH;
   const rabbitryName = myProfileForPdf.rabbitry_name || '';
   const rightLines = [['Breed', r.breed||'']];
   if(fields.dob!==false) rightLines.push(['Date of Birth', r.dob?fmtDate(r.dob):'']);
@@ -3690,7 +3742,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     page.drawImage(logoImg, { x:hx, y: headerTopY-42+(42-h)/2, width:w, height:h });
     hx += logoSize+10;
   }
-  drawText(rabbitryName || 'Rabbitry', hx, headerTopY, fonts.serifBold, 19, black);
+  drawText(rabbitryName || 'Rabbitry', hx, headerTopY, titleFontFor(pedigreeSettings2.nameFont), titleSizeFor(pedigreeSettings2.nameFont, 19), black);
   if(pedigreeSettings2.tagline) drawText(pedigreeSettings2.tagline, hx, headerTopY-22, fonts.mono, 7, accent);
 
   const rightX = W-M; let ry = headerTopY;
@@ -3898,14 +3950,9 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
   let regenTimer = null, regenSeq = 0, lastBlobUrl = null;
 
   function themeButtonsHTML(){
-    if(hasCustomBackground && useBackgroundDraft){
-      const t = draft.printTheme==='sex' ? 'mono' : draft.printTheme;
-      return `<button type="button" data-v="mono" class="${t==='mono'?'on':''}">Black</button>
-        <button type="button" data-v="custom" class="${t==='custom'?'on':''}">Custom color</button>`;
-    }
-    return `<button type="button" data-v="mono" class="${draft.printTheme==='mono'?'on':''}">Black &amp; white</button>
-      <button type="button" data-v="sex" class="${draft.printTheme==='sex'?'on':''}">Pink / blue by sex</button>
-      <button type="button" data-v="custom" class="${draft.printTheme==='custom'?'on':''}">Custom</button>`;
+    const t = draft.printTheme==='sex' ? 'mono' : draft.printTheme;
+    return `<button type="button" data-v="mono" class="${t==='mono'?'on':''}">Black &amp; white</button>
+      <button type="button" data-v="custom" class="${t==='custom'?'on':''}">Custom</button>`;
   }
 
   function renderSheet(){
@@ -3930,6 +3977,12 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
         <input type="file" id="pp-logo-file" accept="image/*" style="display:none;">
       </div>
       <div class="field"><label>Tagline (optional)</label><input id="pp-tagline" value="${esc(draft.tagline||'')}"></div>
+      <div class="field"><label>"Pedigree" title font</label>
+        ${fontSegHTML('pp-titlefont', draft.titleFont, 'cormorant')}
+      </div>
+      <div class="field"><label>Rabbitry name font</label>
+        ${fontSegHTML('pp-namefont', draft.nameFont, 'cormorant')}
+      </div>
       <div class="field"><label>Instagram / Facebook</label><input id="pp-social" value="${esc(draft.social||'')}"></div>
       <div class="field"><label>Print colors</label><div class="seg" id="pp-theme">${themeButtonsHTML()}</div></div>
       <div class="field" id="pp-customwrap" style="${draft.printTheme==='custom'?'':'display:none;'}"><label>Custom accent color</label><input type="color" id="pp-customcolor" value="${esc(draft.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
@@ -3939,6 +3992,12 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
         </div>
       </div>
       <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="pp-cert" ${draft.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
+      <label style="display:flex; align-items:center; gap:8px; padding:10px 0 4px; font-size:13px;"><input type="checkbox" id="pp-watermark" ${draft.watermarkEnabled?'checked':''} style="width:18px; height:18px;"> Show diagonal watermark</label>
+      <div class="field" id="pp-watermarkwrap" style="${draft.watermarkEnabled?'':'display:none;'}">
+        <label>Watermark text</label><input id="pp-watermarktext" value="${esc(draft.watermarkText||'')}" placeholder="Defaults to your rabbitry name">
+        <label style="margin-top:8px;">Watermark font</label>
+        ${fontSegHTML('pp-watermarkfont', draft.watermarkFont, 'script')}
+      </div>
       ${(hasCustomBackground && useBackgroundDraft)?`<div class="field"><label>Footer layout</label>
         <div class="seg" id="pp-footerstyle">
           <button type="button" data-v="plain" class="${(draft.footerStyle||'plain')==='plain'?'on':''}">Centered, no box</button>
@@ -3956,8 +4015,16 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     draft.printTheme = document.querySelector('#pp-theme button.on').dataset.v;
     draft.customAccent = document.getElementById('pp-customcolor').value;
     draft.hasCertification = document.getElementById('pp-cert').checked;
+    draft.watermarkEnabled = document.getElementById('pp-watermark').checked;
+    draft.watermarkText = document.getElementById('pp-watermarktext').value.trim();
+    const wmFontBtn = document.querySelector('#pp-watermarkfont button.on');
+    if(wmFontBtn) draft.watermarkFont = wmFontBtn.dataset.v;
     const footerStyleBtn = document.querySelector('#pp-footerstyle button.on');
     if(footerStyleBtn) draft.footerStyle = footerStyleBtn.dataset.v;
+    const titleFontBtn = document.querySelector('#pp-titlefont button.on');
+    if(titleFontBtn) draft.titleFont = titleFontBtn.dataset.v;
+    const nameFontBtn = document.querySelector('#pp-namefont button.on');
+    if(nameFontBtn) draft.nameFont = nameFontBtn.dataset.v;
     draft.fields = {
       dob: document.getElementById('pp-field-dob').checked,
       reg: document.getElementById('pp-field-reg').checked,
@@ -4023,10 +4090,22 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       document.getElementById(id).oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
     });
     document.getElementById('pp-cert').onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
+    document.getElementById('pp-watermark').onchange = (e)=>{
+      document.getElementById('pp-watermarkwrap').style.display = e.target.checked ? '' : 'none';
+      readDraftFromControls(); scheduleRegen(true);
+    };
+    document.getElementById('pp-watermarktext').oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
     const ppFooterStyleSeg = document.getElementById('pp-footerstyle');
     if(ppFooterStyleSeg) ppFooterStyleSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
       ppFooterStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
       readDraftFromControls(); scheduleRegen(true);
+    });
+    ['pp-titlefont','pp-namefont','pp-watermarkfont'].forEach(segId=>{
+      const seg = document.getElementById(segId);
+      if(seg) seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+        seg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+        readDraftFromControls(); scheduleRegen(true);
+      });
     });
     fieldRows.forEach(([k])=>{
       document.getElementById('pp-field-'+k).onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
@@ -4533,7 +4612,7 @@ function renderForSale(main){
       return `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div>
         ${detail?`<div class="card-detail">${detail}</div>`:''}
         <div class="card-actions">
-          <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Official Pedigree</button>
+          <button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button>
           <button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit</button>
         </div></div>`;
     }).join('');
@@ -4758,17 +4837,12 @@ async function openPedigreeSettingsSheet(){
   const myProfileForPdf = await getMyPedigreeProfile();
   const hasCustomBg = !!(myProfileForPdf.pedigree_background && myProfileForPdf.pedigree_template && myProfileForPdf.pedigree_template!=='generic');
   const fieldRows = [['dob','Date of birth'],['reg','Registration #'],['gc','GC #'],['ear','Ear #'],['color','Color'],['weight','Weight']];
-  const narrowedTheme = (hasCustomBg && s.printTheme==='sex') ? 'mono' : s.printTheme;
-  const themeButtonsHTML = hasCustomBg
-    ? `<button type="button" data-v="mono" class="${narrowedTheme==='mono'?'on':''}">Black</button>
-       <button type="button" data-v="custom" class="${narrowedTheme==='custom'?'on':''}">Custom color</button>`
-    : `<button type="button" data-v="mono" class="${s.printTheme==='mono'?'on':''}">Black &amp; white</button>
-       <button type="button" data-v="sex" class="${s.printTheme==='sex'?'on':''}">Pink / blue by sex</button>
-       <button type="button" data-v="custom" class="${s.printTheme==='custom'?'on':''}">Custom</button>`;
+  const narrowedTheme = s.printTheme==='sex' ? 'mono' : s.printTheme;
+  const themeButtonsHTML = `<button type="button" data-v="mono" class="${narrowedTheme==='mono'?'on':''}">Black &amp; white</button>
+       <button type="button" data-v="custom" class="${narrowedTheme==='custom'?'on':''}">Custom</button>`;
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Pedigree settings</h2>
     <div class="card-sub" style="margin-bottom:12px;">Controls what shows up on your printed pedigree — your logo, contact info, print colors, and which fields appear. Your name, rabbitry name, phone, and website come from <b>More &rarr; My info</b>.</div>
-    ${hasCustomBg?'<div class="card-sub" style="background:var(--card); border:1px solid var(--line-strong); border-radius:10px; padding:10px 12px; margin-bottom:12px;">This account has a custom background PDF on file, so print colors are limited to what stays legible on it.</div>':''}
     ${isAdminUser?`<div class="card no-tap" style="margin-bottom:14px;">
       <div class="section-label" style="margin:0 0 8px;">MY PEDIGREE TEMPLATE (ADMIN)</div>
       <div class="field"><label>Template filename</label><input type="text" id="ps-mytemplate" placeholder="generic" value="${esc(myProfileForPdf.pedigree_template||'')}"></div>
@@ -4788,6 +4862,12 @@ async function openPedigreeSettingsSheet(){
       <input type="file" id="ps-logo-file" accept="image/*" style="display:none;">
     </div>
     <div class="field"><label>Tagline (optional)</label><input id="ps-tagline" value="${esc(s.tagline||'')}" placeholder="Est. 2021 &middot; Purebred &amp; Proud"></div>
+    <div class="field"><label>"Pedigree" title font</label>
+      ${fontSegHTML('ps-titlefont', s.titleFont, 'cormorant')}
+    </div>
+    <div class="field"><label>Rabbitry name font</label>
+      ${fontSegHTML('ps-namefont', s.nameFont, 'cormorant')}
+    </div>
     <div class="field"><label>Instagram / Facebook</label><input id="ps-social" value="${esc(s.social||'')}" placeholder="@yourrabbitry"></div>
     <div class="field"><label>Print colors</label>
       <div class="seg" id="ps-theme">${themeButtonsHTML}</div>
@@ -4805,6 +4885,12 @@ async function openPedigreeSettingsSheet(){
       </div>
     </div>
     <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="ps-cert" ${s.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
+    <label style="display:flex; align-items:center; gap:8px; padding:10px 0 4px; font-size:13px;"><input type="checkbox" id="ps-watermark" ${s.watermarkEnabled?'checked':''} style="width:18px; height:18px;"> Show diagonal watermark</label>
+    <div class="field" id="ps-watermarkwrap" style="${s.watermarkEnabled?'':'display:none;'}">
+      <label>Watermark text</label><input id="ps-watermarktext" value="${esc(s.watermarkText||'')}" placeholder="Defaults to your rabbitry name">
+      <label style="margin-top:8px;">Watermark font</label>
+      ${fontSegHTML('ps-watermarkfont', s.watermarkFont, 'script')}
+    </div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="ps-save">Save</button></div>`);
 
   const myTplSave = document.getElementById('ps-mytemplate-save');
@@ -4860,6 +4946,13 @@ async function openPedigreeSettingsSheet(){
   if(footerStyleSeg) footerStyleSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     footerStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   });
+  ['ps-titlefont','ps-namefont','ps-watermarkfont'].forEach(segId=>{
+    const seg = document.getElementById(segId);
+    if(seg) seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      seg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+    });
+  });
+  document.getElementById('ps-watermark').onchange = (e)=>{ document.getElementById('ps-watermarkwrap').style.display = e.target.checked ? '' : 'none'; };
 
   document.getElementById('ps-save').onclick = async ()=>{
     pedigreeSettings.tagline = document.getElementById('ps-tagline').value.trim();
@@ -4867,8 +4960,16 @@ async function openPedigreeSettingsSheet(){
     pedigreeSettings.printTheme = document.querySelector('#ps-theme button.on').dataset.v;
     pedigreeSettings.customAccent = document.getElementById('ps-customcolor').value;
     pedigreeSettings.hasCertification = document.getElementById('ps-cert').checked;
+    pedigreeSettings.watermarkEnabled = document.getElementById('ps-watermark').checked;
+    pedigreeSettings.watermarkText = document.getElementById('ps-watermarktext').value.trim();
+    const psWmFontBtn = document.querySelector('#ps-watermarkfont button.on');
+    if(psWmFontBtn) pedigreeSettings.watermarkFont = psWmFontBtn.dataset.v;
     const footerStyleBtn = document.querySelector('#ps-footerstyle button.on');
     if(footerStyleBtn) pedigreeSettings.footerStyle = footerStyleBtn.dataset.v;
+    const titleFontBtn = document.querySelector('#ps-titlefont button.on');
+    if(titleFontBtn) pedigreeSettings.titleFont = titleFontBtn.dataset.v;
+    const nameFontBtn = document.querySelector('#ps-namefont button.on');
+    if(nameFontBtn) pedigreeSettings.nameFont = nameFontBtn.dataset.v;
     pedigreeSettings.fields = {
       dob: document.getElementById('ps-field-dob').checked,
       reg: document.getElementById('ps-field-reg').checked,
@@ -5120,7 +5221,7 @@ function renderProfile(){
   if(profileTab==='overview') body.innerHTML = overviewTabHTML(r);
   else if(profileTab==='breeding') body.innerHTML = breedingTabHTML(r);
   else if(profileTab==='litters') body.innerHTML = littersTabHTML(r);
-  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Official Pedigree</button></div>`;
+  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Pedigree</button></div>`;
   else if(profileTab==='photos') body.innerHTML = photosTabHTML(r);
   else if(profileTab==='notes') body.innerHTML = notesTabHTML(r);
   wireProfileTab(r);
