@@ -1656,7 +1656,7 @@ function blankRabbit(over){
     id:uid(), name:'', sex:'doe', breed:'', color:'', earNumber:'', dob:null, weight:'', legsWins:'', registrationNumber:'', gcNumber:'', wins:[],
     sireName:'', damName:'', status:'open', partner:null, bredDate:null, dueDate:null,
     litterBornDate:null, litterKits:null, litterDead:null, weanDate:null, sellDate:null,
-    rebreedWeeks:3, lastLitterSummary:'', notes:'', notesLog:[], photos:[], flag:'', alias:'', external:false, weightLog:[],
+    rebreedDate:null, lastLitterSummary:'', notes:'', notesLog:[], photos:[], flag:'', alias:'', external:false, weightLog:[],
     sale:null, prevStatus:null, breedingHistory:[], activeBreedingId:null, presaleFlag:false,
     nestBoxAckDate:null, litterConvertAckDate:null, forSale:false, graduatedDate:null, juniorAckDone:false
   }, over);
@@ -1748,7 +1748,7 @@ function seedDemoExtras(){
   const willow = blankRabbit({
     name:'DEMO Willow', sex:'doe', breed:'Holland Lop', color:'Solid Blue Tort', status:'nursing',
     partner:'DEMO Ranger', litterBornDate:litterBorn, litterKits:willowLitterKits, litterDead:willowDead,
-    weanDate:addDays(litterBorn,42), sellDate:addDays(litterBorn,56), rebreedWeeks:3,
+    weanDate:addDays(litterBorn,42), sellDate:addDays(litterBorn,56), rebreedDate:addDays(litterBorn,28),
     lastLitterSummary:'1 buck, 1 doe, 1 dead (1 DOA, 0 peanut, 0 passed) — '+fmtDate(litterBorn),
     earNumber:'D15', notesLog:[{id:uid(), date:addDays(t,-2), text:'Excellent type developing — watching her for the next show string.'},{id:uid(), date:addDays(t,-40), text:'Paired with DEMO Ranger.'}]
   });
@@ -1872,7 +1872,7 @@ function isArchived(r){ return ARCHIVED.includes(r.status); }
 function isActive(r){ return !isArchived(r) && r.status!=='external'; }
 function findByName(name){ if(!name) return null; const k=name.trim().toLowerCase(); return rabbits.find(r=>r.name.trim().toLowerCase()===k || (r.alias&&r.alias.trim().toLowerCase()===k)); }
 function litterAgeDays(r){ return daysBetween(r.litterBornDate, todayStr()); }
-function isRebreedReady(r){ return r.status==='nursing' && litterAgeDays(r) >= r.rebreedWeeks*7; }
+function isRebreedReady(r){ return r.status==='nursing' && !!r.rebreedDate && todayStr() >= r.rebreedDate; }
 function canRebred(r){ return r.status==='nursing' && (isRebreedReady(r) || !r.litterKits || r.litterKits.length===0); }
 function daysToDue(r){ return r.dueDate ? daysBetween(todayStr(), r.dueDate) : null; }
 function needsNestBox(r){ const d=daysToDue(r); return r.status==='pregnant' && d!==null && d<=3; }
@@ -2021,8 +2021,8 @@ function cardHTML(r, forceUrgent, origin){
     detail = `Bred to <b>${esc(r.partner||'?')}</b> ${fmtDate(r.bredDate)} &middot; <b>${t}</b> (${fmtDate(r.dueDate)})`;
     if(needsNestBox(r)) detail += `<br><b>Give her a nest box</b> — due in 3 days.`;
   } else if(r.status==='nursing'){
-    const age=litterAgeDays(r), rem=r.rebreedWeeks*7-age;
-    detail = `${r.litterKits?r.litterKits.length:0} kits, born ${fmtDate(r.litterBornDate)} (${age}d) &middot; wean ${fmtDate(r.weanDate)} &middot; sell ${fmtDate(r.sellDate)}<br>rebreed target ${r.rebreedWeeks}wk — ${rem<=0?'<b>ready now</b>':'ready in '+rem+' day'+(rem===1?'':'s')}`;
+    const age=litterAgeDays(r), rem=r.rebreedDate?daysBetween(todayStr(),r.rebreedDate):null;
+    detail = `${r.litterKits?r.litterKits.length:0} kits, born ${fmtDate(r.litterBornDate)} (${age}d) &middot; wean ${fmtDate(r.weanDate)} &middot; sell ${fmtDate(r.sellDate)}<br>rebreed target ${r.rebreedDate?fmtDate(r.rebreedDate):'not set'}${rem===null?'':' — '+(rem<=0?'<b>ready now</b>':'ready in '+rem+' day'+(rem===1?'':'s'))}`;
   } else if(r.sale){
     detail = saleLine(r);
   } else {
@@ -2030,8 +2030,8 @@ function cardHTML(r, forceUrgent, origin){
   }
   const flag = r.flag?`<div class="flag">${esc(r.flag)}</div>`:'';
   let a='';
-  if(r.status==='pregnant') a=`<button class="btn btn-primary" data-act="kindled" data-id="${r.id}">Kindled</button><button class="btn btn-danger" data-act="lost" data-id="${r.id}">Litter lost</button>`;
-  else if(r.status==='nursing') a=`${canRebred(r)?`<button class="btn btn-primary" data-act="rebred" data-id="${r.id}">Rebred</button>`:`<button class="btn btn-secondary btn-sm" disabled style="opacity:.5;">Rebreed available ${fmtDate(addDays(r.litterBornDate,r.rebreedWeeks*7))}</button>`}<button class="btn btn-secondary" data-act="wean" data-id="${r.id}">Weaned</button>`;
+  if(r.status==='pregnant') a=`<button class="btn btn-primary" data-act="kindled" data-id="${r.id}">Kindled</button><button class="btn btn-danger" data-act="lost" data-id="${r.id}">Not bred</button>`;
+  else if(r.status==='nursing') a=`${canRebred(r)?`<button class="btn btn-primary" data-act="rebred" data-id="${r.id}">Rebred</button>`:`<button class="btn btn-secondary btn-sm" disabled style="opacity:.5;">Rebreed available ${fmtDate(r.rebreedDate)}</button>`}<button class="btn btn-secondary" data-act="wean" data-id="${r.id}">Weaned</button>`;
   else if(isArchived(r)) a=`<button class="btn btn-primary" data-act="unarchive" data-id="${r.id}">Return to roster</button>`;
   else if(r.sex==='doe') a=`<button class="btn btn-primary" data-act="bred" data-id="${r.id}">Record breeding</button><button class="btn btn-secondary btn-sm" data-act="plan" data-id="${r.id}">Plan a breeding</button>`;
   else a='';
@@ -2113,7 +2113,7 @@ function nurseryCardHTML(r){
     ${kits.length?`<button class="btn btn-secondary btn-sm" style="margin-top:8px;" data-togglekits="${r.id}">${expanded?'Hide kits':'Manage kits'}</button>`:''}
     <div class="card-detail">Wean ${fmtDate(r.weanDate)} &middot; 8 weeks ${fmtDate(r.sellDate)}${dead?' &middot; '+dead:''}</div>
     <div class="card-actions">
-      ${canRebred(r)?`<button class="btn btn-primary" data-act="rebred" data-id="${r.id}">Rebred</button>`:`<button class="btn btn-secondary btn-sm" disabled style="opacity:.5;">Rebreed available ${fmtDate(addDays(r.litterBornDate,r.rebreedWeeks*7))}</button>`}
+      ${canRebred(r)?`<button class="btn btn-primary" data-act="rebred" data-id="${r.id}">Rebred</button>`:`<button class="btn btn-secondary btn-sm" disabled style="opacity:.5;">Rebreed available ${fmtDate(r.rebreedDate)}</button>`}
       <button class="btn btn-secondary" data-act="wean" data-id="${r.id}">Weaned</button>
       <button class="btn btn-secondary btn-sm" data-act="litterpedigree" data-id="${r.id}">Pedigree</button>
       <button class="btn btn-secondary btn-sm" data-act="editlitter" data-id="${r.id}">Edit litter</button>
@@ -2412,7 +2412,7 @@ function renderRabbits(main){
       const ra=rank[a.status]!=null?rank[a.status]:2, rb=rank[b.status]!=null?rank[b.status]:2;
       if(ra!==rb) return ra-rb;
       if(a.status==='pregnant') return daysToDue(a)-daysToDue(b);
-      if(a.status==='nursing') return (a.rebreedWeeks*7-litterAgeDays(a))-(b.rebreedWeeks*7-litterAgeDays(b));
+      if(a.status==='nursing') return (a.rebreedDate||'').localeCompare(b.rebreedDate||'');
       return a.name.localeCompare(b.name);
     });
     if(doesFilter!=='all') it = it.filter(r=>r.status===doesFilter);
@@ -2460,8 +2460,7 @@ function renderCalendar(main){
       events.push({date:r.dueDate, label:`${r.name} — estimated kindling`, sub:`Bred to ${r.partner||'?'} · check for a nest box a few days before`, id:r.id, type:'due', overdue:isOverdue(r)});
     }
     if(r.status==='nursing'){
-      const rebreedDate = addDays(r.litterBornDate, r.rebreedWeeks*7);
-      events.push({date:rebreedDate, label:`${r.name} — rebreed target`, sub:`${r.rebreedWeeks} week target from litter born ${fmtDate(r.litterBornDate)}`, id:r.id, type:'rebreed'});
+      if(r.rebreedDate) events.push({date:r.rebreedDate, label:`${r.name} — rebreed target`, sub:`Target set from litter born ${fmtDate(r.litterBornDate)}`, id:r.id, type:'rebreed'});
       if(r.weanDate) events.push({date:r.weanDate, label:`${r.name}'s litter — wean`, sub:'Kits weaned at 6 weeks', id:r.id, type:'wean'});
       if(r.sellDate) events.push({date:r.sellDate, label:`${r.name}'s litter — ready to go`, sub:'8 weeks old, ready for new homes', id:r.id, type:'sell'});
     }
@@ -2755,12 +2754,10 @@ function openKindledSheet(r, editing){
       <div class="field"><label>Passed</label><input type="number" id="f-passed" min="0" value="${d.passed||0}"></div>
     </div>
     <div class="field"><label>Rebreed target</label>
-      <div class="seg" id="f-weeks">${[2,3,4].map(w=>`<button data-v="${w}" class="${r.rebreedWeeks===w?'on':''}">${w} wks</button>`).join('')}</div></div>
+      <input type="date" id="f-rebreed-date" value="${esc(r.rebreedDate || addDays(editing&&r.litterBornDate?r.litterBornDate:todayStr(), 28))}"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
   renderKitRows();
   document.getElementById('f-addkit').onclick=()=>{ kitRows.push({id:uid(), sex:'doe', color:'', forSale:false, individualId:null}); renderKitRows(); };
-  let weeks=r.rebreedWeeks||3;
-  document.querySelectorAll('#f-weeks button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-weeks button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); weeks=+b.dataset.v; });
   document.getElementById('f-save').onclick=()=>{
     const born=csvParseDate(document.getElementById('f-born').value)||todayStr();
     const doa=+document.getElementById('f-doa').value||0, pea=+document.getElementById('f-peanut').value||0, pas=+document.getElementById('f-passed').value||0;
@@ -2768,7 +2765,7 @@ function openKindledSheet(r, editing){
     const wasEditing = editing;
     r.status='nursing'; r.litterBornDate=born; r.litterKits=kitRows.map(k=>({id:k.id, sex:k.sex, color:k.color||'', forSale:k.forSale, individualId:k.individualId}));
     r.litterDead={DOA:doa,peanut:pea,passed:pas}; r.weanDate=addDays(born,42); r.sellDate=addDays(born,56);
-    r.rebreedWeeks=weeks; r.dueDate=null; r.flag='';
+    r.rebreedDate=document.getElementById('f-rebreed-date').value||addDays(born,28); r.dueDate=null; r.flag='';
     r.lastLitterSummary=`${bA} buck, ${dA} doe, ${doa+pea+pas} dead (${doa} DOA, ${pea} peanut, ${pas} passed) — ${fmtDate(born)}`;
     r.breedingHistory = r.breedingHistory||[];
     let entry = r.breedingHistory.find(x=>x.id===r.activeBreedingId) || (wasEditing ? r.breedingHistory[r.breedingHistory.length-1] : null);
@@ -3162,6 +3159,10 @@ function openAncestorSheet(anc, origin){
       <div class="field"><label>Ear #</label><input id="f-aear" value="${esc(anc.earNumber||'')}"></div>
       <div class="field"><label>Weight (lbs)</label><input id="f-aweight" value="${esc(anc.weight||'')}"></div>
     </div>
+    <div class="row2">
+      <div class="field"><label>Date of birth</label><input type="text" inputmode="numeric" id="f-adob" value="${esc(isoToSlash(anc.dob))}" placeholder="MM/DD/YYYY"></div>
+      <div class="field"><label>GC #</label><input id="f-agc" value="${esc(anc.gcNumber||'')}"></div>
+    </div>
     <div class="field"><label>Color / Variety</label><input id="f-acolor" value="${esc(anc.color||'')}"></div>
     <div class="field"><label>Legs</label><input id="f-alegs" value="${esc(anc.legsWins||'')}"></div>
     <div class="field"><label>Registration #</label><input id="f-areg" value="${esc(anc.registrationNumber||'')}"></div>
@@ -3173,6 +3174,7 @@ function openAncestorSheet(anc, origin){
   document.getElementById('f-asave').onclick=()=>{
     anc.name=document.getElementById('f-aname').value.trim()||anc.name;
     anc.earNumber=document.getElementById('f-aear').value; anc.weight=document.getElementById('f-aweight').value;
+    anc.dob=csvParseDate(document.getElementById('f-adob').value)||null; anc.gcNumber=document.getElementById('f-agc').value;
     anc.color=document.getElementById('f-acolor').value; anc.legsWins=document.getElementById('f-alegs').value;
     anc.registrationNumber=document.getElementById('f-areg').value;
     saveData(); done(origin);
@@ -3219,6 +3221,10 @@ function openQuickNameSheet(parent, rel, back){
       <div class="field"><label>Ear #</label><input id="f-qear"></div>
       <div class="field"><label>Weight (lbs)</label><input id="f-qweight"></div>
     </div>
+    <div class="row2">
+      <div class="field"><label>Date of birth</label><input type="text" inputmode="numeric" id="f-qdob" placeholder="MM/DD/YYYY"></div>
+      <div class="field"><label>GC #</label><input id="f-qgc"></div>
+    </div>
     <div class="field"><label>Color / Variety</label><input id="f-qcolor"></div>
     <div class="field"><label>Legs</label><input id="f-qlegs"></div>
     <div class="field"><label>Registration #</label><input id="f-qreg"></div>
@@ -3245,6 +3251,8 @@ function openQuickNameSheet(parent, rel, back){
     const fields = {
       earNumber: document.getElementById('f-qear').value,
       weight: document.getElementById('f-qweight').value,
+      dob: csvParseDate(document.getElementById('f-qdob').value)||null,
+      gcNumber: document.getElementById('f-qgc').value,
       color: document.getElementById('f-qcolor').value,
       legsWins: document.getElementById('f-qlegs').value,
       registrationNumber: document.getElementById('f-qreg').value
@@ -4323,20 +4331,17 @@ async function openAgreementsSheet(){
     <button class="btn btn-secondary" style="width:100%; margin-top:10px;" onclick="openAdminSheet()">Back to all accounts</button>`);
 }
 async function openAdminSheet(){
-  let profiles=[], grants=[];
+  let profiles=[];
   try{ const {data} = await sb.from('profiles').select('*').order('email'); profiles = data||[]; }catch(e){}
-  try{ const {data} = await sb.from('support_access').select('*').gt('expires_at', new Date().toISOString()); grants = data||[]; }catch(e){}
-  const grantMap = {}; grants.forEach(g=>{ grantMap[g.customer_id]=g; });
   const others = profiles.filter(p=>p.id!==adminSelf?.id);
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>All accounts</h2>
     <button class="btn btn-secondary" style="width:100%; margin-bottom:12px;" id="viewAgreementsBtn">View signed agreements</button>
-    <div class="card-sub" style="margin-bottom:12px;">"View account" only appears once a customer has turned on support access for themselves.</div>
     ${others.length ? others.map(p=>`
       <div class="card no-tap">
         <div class="card-top"><div>
           <div class="card-name">${esc(p.email||p.id)}</div>
-          <div class="card-sub">${p.role==='admin'?'Admin':'Customer'} &middot; ${p.access_granted?'Access granted':'Access NOT granted'}${grantMap[p.id]?' &middot; support access active':''}</div>
+          <div class="card-sub">${p.role==='admin'?'Admin':'Customer'} &middot; ${p.access_granted?'Access granted':'Access NOT granted'}</div>
           <div class="card-sub" style="margin-top:8px;">Pedigree template: <b>${esc(p.pedigree_template||'generic')}</b>${p.pedigree_background?' &middot; background overlay':''}</div>
         </div></div>
         <div class="card-actions">
@@ -4348,7 +4353,7 @@ async function openAdminSheet(){
           <button class="btn btn-secondary btn-sm" data-previewbg="${p.id}">Preview worst case</button>
           <button class="btn btn-secondary btn-sm" data-toggleaccess="${p.id}" data-current="${p.access_granted}">${p.access_granted?'Revoke access':'Grant access'}</button>
           <button class="btn btn-secondary btn-sm" data-viewlog="${p.id}" data-email="${esc(p.email||'')}">Activity log</button>
-          ${grantMap[p.id]?`<button class="btn btn-primary btn-sm" data-viewcustomer="${p.id}" data-email="${esc(p.email||'')}">View account</button>`:''}
+          <button class="btn btn-primary btn-sm" data-viewcustomer="${p.id}" data-email="${esc(p.email||'')}">View account</button>
         </div>
       </div>`).join('') : `<div class="card no-tap"><div class="card-detail">No other accounts yet.</div></div>`}`);
   document.getElementById('viewAgreementsBtn').onclick = openAgreementsSheet;
@@ -4479,7 +4484,6 @@ async function openMyInfoSheet(){
 }
 async function openMoreSheet(){
   const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['pedigreesettings','Pedigree settings'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
-  const activeGrant = viewingAsCustomer ? null : await checkMySupportAccess();
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
       <div class="section-label" style="margin:0 0 3px;">SIGNED IN AS</div>
@@ -4488,24 +4492,11 @@ async function openMoreSheet(){
     ${isAdminUser ? `<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" id="openAdminBtn">Admin — all accounts</button>` : ''}
     ${!localSandboxMode ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="myInfoBtn">My info</button>` : ''}
     ${(!localSandboxMode && !viewingAsCustomer) ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="practiceModeBtn">Try practice mode (local only)</button>` : ''}
-    ${(!viewingAsCustomer && !localSandboxMode) ? `<div class="card no-tap" style="margin-bottom:12px;">
-      <div class="card-name">Support access</div>
-      <div class="card-sub" style="margin:4px 0 10px;">${activeGrant ? `Support can view and edit your account until ${new Date(activeGrant.expires_at).toLocaleString()}.` : 'Allow CJM Legacy Rabbitry support to view and edit your account for 48 hours — useful if you need help troubleshooting something.'}</div>
-      ${activeGrant ? `<button class="btn btn-danger btn-sm" id="revokeAccessBtn">Revoke access now</button>` : `<button class="btn btn-secondary btn-sm" id="grantAccessBtn">Allow support access (48h)</button>`}
-    </div>` : ''}
     ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}
     <button class="btn btn-danger" style="width:100%; margin-top:4px;" id="signOutBtn">Sign out</button>`);
   if(document.getElementById('openAdminBtn')) document.getElementById('openAdminBtn').onclick = openAdminSheet;
   if(document.getElementById('myInfoBtn')) document.getElementById('myInfoBtn').onclick = openMyInfoSheet;
   if(document.getElementById('practiceModeBtn')) document.getElementById('practiceModeBtn').onclick = enterPracticeMode;
-  if(document.getElementById('grantAccessBtn')) document.getElementById('grantAccessBtn').onclick = async ()=>{
-    await sb.from('support_access').insert({ customer_id: currentUser.id, expires_at: new Date(Date.now()+48*3600*1000).toISOString(), reason: 'Customer-granted support access' });
-    showToast('Support access granted for 48 hours'); openMoreSheet();
-  };
-  if(document.getElementById('revokeAccessBtn')) document.getElementById('revokeAccessBtn').onclick = async ()=>{
-    await sb.from('support_access').delete().eq('customer_id', currentUser.id).gt('expires_at', new Date().toISOString());
-    showToast('Support access revoked'); openMoreSheet();
-  };
   document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
     const k=b.dataset.more;
     if(k==='add') openAddSheet();
@@ -4782,7 +4773,11 @@ async function openPedigreeSettingsSheet(){
       <div class="section-label" style="margin:0 0 8px;">MY PEDIGREE TEMPLATE (ADMIN)</div>
       <div class="field"><label>Template filename</label><input type="text" id="ps-mytemplate" placeholder="generic" value="${esc(myProfileForPdf.pedigree_template||'')}"></div>
       <label style="display:flex; align-items:center; gap:8px; padding:4px 0 10px; font-size:13px;"><input type="checkbox" id="ps-mytemplate-bg" ${myProfileForPdf.pedigree_background?'checked':''} style="width:18px; height:18px;"> This is a background PDF (draw pedigree on top)</label>
-      <button class="btn btn-secondary btn-sm" id="ps-mytemplate-save">Save my template</button>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" id="ps-mytemplate-upload">Upload background PDF&hellip;</button>
+        <button class="btn btn-secondary btn-sm" id="ps-mytemplate-save">Save my template</button>
+      </div>
+      <input type="file" id="ps-mytemplate-file" accept="application/pdf" style="display:none;">
     </div>`:''}
     <div class="field"><label>Logo</label>
       <div style="display:flex; align-items:center; gap:10px;">
@@ -4821,6 +4816,30 @@ async function openPedigreeSettingsSheet(){
       showToast('Your pedigree template updated');
       closeSheet(); openPedigreeSettingsSheet();
     }catch(e){ console.error(e); showToast('Could not save — check console for details.'); }
+  };
+  const myTplUploadBtn = document.getElementById('ps-mytemplate-upload');
+  if(myTplUploadBtn) myTplUploadBtn.onclick = ()=> document.getElementById('ps-mytemplate-file').click();
+  const myTplFile = document.getElementById('ps-mytemplate-file');
+  if(myTplFile) myTplFile.onchange = async ()=>{
+    const file = myTplFile.files[0];
+    myTplFile.value = '';
+    if(!file) return;
+    if(file.type!=='application/pdf' && !file.name.toLowerCase().endsWith('.pdf')){ showToast('Choose a PDF file'); return; }
+    const origText = myTplUploadBtn.textContent;
+    myTplUploadBtn.disabled = true; myTplUploadBtn.textContent = 'Uploading…';
+    try{
+      const safeName = file.name.replace(/\.pdf$/i,'').trim().toLowerCase().replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'') || ('background-'+currentUser.id.slice(0,8));
+      const { error } = await sb.storage.from('pedigree-templates').upload(`${safeName}.pdf`, file, { upsert:true, contentType:'application/pdf' });
+      if(error) throw error;
+      document.getElementById('ps-mytemplate').value = safeName;
+      document.getElementById('ps-mytemplate-bg').checked = true;
+      showToast('Uploaded — now tap "Save my template" to apply it');
+    }catch(err){
+      console.error(err);
+      showToast('Upload failed — check console for details.');
+    }finally{
+      myTplUploadBtn.disabled = false; myTplUploadBtn.textContent = origText;
+    }
   };
   document.getElementById('ps-logo-btn').onclick = ()=> document.getElementById('ps-logo-file').click();
   document.getElementById('ps-logo-file').onchange = ()=>{
@@ -4904,7 +4923,7 @@ function downloadCSV(filename, csvText){
 }
 
 const RABBIT_CSV_COLUMNS = ['id','name','sex','breed','color','earNumber','dob','weight','legsWins','registrationNumber','gcNumber',
-  'sireName','damName','status','partner','bredDate','dueDate','litterBornDate','weanDate','sellDate','rebreedWeeks',
+  'sireName','damName','status','partner','bredDate','dueDate','litterBornDate','weanDate','sellDate','rebreedDate',
   'notes','flag','alias','forSale','graduatedDate','wins',
   'sale_buyer','sale_price','sale_deposit','sale_depositDate','sale_pickupDate','sale_soldDate'];
 function encodeWinsForCsv(wins){
@@ -4922,7 +4941,7 @@ function rabbitToCsvRow(r){
   return { id:r.id, name:r.name, sex:r.sex, breed:r.breed||'', color:r.color||'', earNumber:r.earNumber||'', dob:r.dob||'',
     weight:r.weight||'', legsWins:r.legsWins||'', registrationNumber:r.registrationNumber||'', gcNumber:r.gcNumber||'', sireName:r.sireName||'', damName:r.damName||'',
     status:r.status, partner:r.partner||'', bredDate:r.bredDate||'', dueDate:r.dueDate||'', litterBornDate:r.litterBornDate||'',
-    weanDate:r.weanDate||'', sellDate:r.sellDate||'', rebreedWeeks:r.rebreedWeeks||'', notes:r.notes||'', flag:r.flag||'', alias:r.alias||'',
+    weanDate:r.weanDate||'', sellDate:r.sellDate||'', rebreedDate:r.rebreedDate||'', notes:r.notes||'', flag:r.flag||'', alias:r.alias||'',
     forSale:r.forSale?'yes':'no', graduatedDate:r.graduatedDate||'', wins:encodeWinsForCsv(r.wins),
     sale_buyer:s.buyer||'', sale_price:s.price||'', sale_deposit:s.deposit||'', sale_depositDate:s.depositDate||'',
     sale_pickupDate:s.pickupDate||'', sale_soldDate:s.soldDate||'' };
@@ -4941,7 +4960,7 @@ function csvRowToRabbit(row, existing){
     registrationNumber: row.registrationNumber, gcNumber: row.gcNumber||'', sireName: row.sireName, damName: row.damName,
     status: row.status||'open', partner: row.partner||null, bredDate: row.bredDate||null, dueDate: row.dueDate||null,
     litterBornDate: row.litterBornDate||null, weanDate: row.weanDate||null, sellDate: row.sellDate||null,
-    rebreedWeeks: Number(row.rebreedWeeks)||3, notes: row.notes||'', flag: row.flag||'', alias: row.alias||'',
+    rebreedDate: row.rebreedDate||null, notes: row.notes||'', flag: row.flag||'', alias: row.alias||'',
     forSale: row.forSale==='yes', graduatedDate: row.graduatedDate||null, wins: mergedWins,
     sale: hasSale ? { buyer:row.sale_buyer||'', price:row.sale_price||'', deposit:row.sale_deposit||'', depositDate:row.sale_depositDate||'',
       pickupDate:row.sale_pickupDate||'', soldDate:row.sale_soldDate||'' } : base.sale
@@ -5053,7 +5072,7 @@ function renderBackup(main){
 /* ---------------- RABBIT PROFILE (full screen) ---------------- */
 function contextualActions(r){
   const acts=[];
-  if(r.status==='pregnant'){ acts.push(['kindled','Record litter'],['lost','Litter lost']); }
+  if(r.status==='pregnant'){ acts.push(['kindled','Record litter'],['lost','Not bred']); }
   else if(r.status==='nursing'){ if(canRebred(r)) acts.push(['rebred','Rebred']); acts.push(['wean','Weaned'],['editlitter','Edit litter']); }
   else if(isArchived(r)){ acts.push(['unarchive','Return to roster']); }
   else if(r.status==='growing'){ acts.push(['graduate','Move to roster']); }
@@ -5128,7 +5147,7 @@ function breedingTabHTML(r){
     const d=daysToDue(r);
     cur = `<div class="card no-tap"><div class="card-name" style="font-size:16px;">Current breeding</div>
       <div class="card-detail">Bred to <b>${esc(r.partner||'?')}</b> on ${fmtDate(r.bredDate)}<br>Estimated kindling: <b>${fmtDate(r.dueDate)}</b> (${d<0?-d+' days overdue':d===0?'today':'in '+d+' days'})</div>
-      <div class="card-actions"><button class="btn btn-primary btn-sm" data-pa="kindled">Record litter</button><button class="btn btn-danger btn-sm" data-pa="lost">Litter lost</button></div></div>`;
+      <div class="card-actions"><button class="btn btn-primary btn-sm" data-pa="kindled">Record litter</button><button class="btn btn-danger btn-sm" data-pa="lost">Not bred</button></div></div>`;
   } else if(r.status==='nursing'){
     cur = `<div class="card no-tap"><div class="card-name" style="font-size:16px;">Currently on a litter</div>
       <div class="card-detail">${r.litterKits?r.litterKits.length:0} kits, born ${fmtDate(r.litterBornDate)}</div>
