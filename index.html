@@ -1586,7 +1586,7 @@ const FONT_OPTIONS = [
 ];
 function fontSegHTML(id, current, fallback){
   const cur = current || fallback || 'cormorant';
-  return `<div class="seg" id="${id}" style="flex-wrap:wrap;">${FONT_OPTIONS.map(([v,l])=>`<button type="button" data-v="${v}" class="${cur===v?'on':''}">${esc(l)}</button>`).join('')}</div>`;
+  return `<select id="${id}">${FONT_OPTIONS.map(([v,l])=>`<option value="${v}" ${cur===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 }
 let pedigreeSettings = defaultPedigreeSettings();
 const THEME_KEY = 'theme_v1';
@@ -4017,14 +4017,11 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     draft.hasCertification = document.getElementById('pp-cert').checked;
     draft.watermarkEnabled = document.getElementById('pp-watermark').checked;
     draft.watermarkText = document.getElementById('pp-watermarktext').value.trim();
-    const wmFontBtn = document.querySelector('#pp-watermarkfont button.on');
-    if(wmFontBtn) draft.watermarkFont = wmFontBtn.dataset.v;
+    draft.watermarkFont = document.getElementById('pp-watermarkfont').value;
     const footerStyleBtn = document.querySelector('#pp-footerstyle button.on');
     if(footerStyleBtn) draft.footerStyle = footerStyleBtn.dataset.v;
-    const titleFontBtn = document.querySelector('#pp-titlefont button.on');
-    if(titleFontBtn) draft.titleFont = titleFontBtn.dataset.v;
-    const nameFontBtn = document.querySelector('#pp-namefont button.on');
-    if(nameFontBtn) draft.nameFont = nameFontBtn.dataset.v;
+    draft.titleFont = document.getElementById('pp-titlefont').value;
+    draft.nameFont = document.getElementById('pp-namefont').value;
     draft.fields = {
       dob: document.getElementById('pp-field-dob').checked,
       reg: document.getElementById('pp-field-reg').checked,
@@ -4100,12 +4097,9 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       ppFooterStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
       readDraftFromControls(); scheduleRegen(true);
     });
-    ['pp-titlefont','pp-namefont','pp-watermarkfont'].forEach(segId=>{
-      const seg = document.getElementById(segId);
-      if(seg) seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-        seg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-        readDraftFromControls(); scheduleRegen(true);
-      });
+    ['pp-titlefont','pp-namefont','pp-watermarkfont'].forEach(selId=>{
+      const el = document.getElementById(selId);
+      if(el) el.onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
     });
     fieldRows.forEach(([k])=>{
       document.getElementById('pp-field-'+k).onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
@@ -4946,12 +4940,6 @@ async function openPedigreeSettingsSheet(){
   if(footerStyleSeg) footerStyleSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
     footerStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
   });
-  ['ps-titlefont','ps-namefont','ps-watermarkfont'].forEach(segId=>{
-    const seg = document.getElementById(segId);
-    if(seg) seg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-      seg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
-    });
-  });
   document.getElementById('ps-watermark').onchange = (e)=>{ document.getElementById('ps-watermarkwrap').style.display = e.target.checked ? '' : 'none'; };
 
   document.getElementById('ps-save').onclick = async ()=>{
@@ -4962,14 +4950,11 @@ async function openPedigreeSettingsSheet(){
     pedigreeSettings.hasCertification = document.getElementById('ps-cert').checked;
     pedigreeSettings.watermarkEnabled = document.getElementById('ps-watermark').checked;
     pedigreeSettings.watermarkText = document.getElementById('ps-watermarktext').value.trim();
-    const psWmFontBtn = document.querySelector('#ps-watermarkfont button.on');
-    if(psWmFontBtn) pedigreeSettings.watermarkFont = psWmFontBtn.dataset.v;
+    pedigreeSettings.watermarkFont = document.getElementById('ps-watermarkfont').value;
     const footerStyleBtn = document.querySelector('#ps-footerstyle button.on');
     if(footerStyleBtn) pedigreeSettings.footerStyle = footerStyleBtn.dataset.v;
-    const titleFontBtn = document.querySelector('#ps-titlefont button.on');
-    if(titleFontBtn) pedigreeSettings.titleFont = titleFontBtn.dataset.v;
-    const nameFontBtn = document.querySelector('#ps-namefont button.on');
-    if(nameFontBtn) pedigreeSettings.nameFont = nameFontBtn.dataset.v;
+    pedigreeSettings.titleFont = document.getElementById('ps-titlefont').value;
+    pedigreeSettings.nameFont = document.getElementById('ps-namefont').value;
     pedigreeSettings.fields = {
       dob: document.getElementById('ps-field-dob').checked,
       reg: document.getElementById('ps-field-reg').checked,
