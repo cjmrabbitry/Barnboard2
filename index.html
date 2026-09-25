@@ -1573,7 +1573,7 @@ const PEDIGREE_SETTINGS_KEY = 'pedigreeSettings_v1';
 function defaultPedigreeSettings(){
   return {
     logoDataUrl:null, social:'', tagline:'',
-    printTheme:'sex', customAccent:'#c6a15b', hasCertification:true,
+    printTheme:'sex', customAccent:'#c6a15b', hasCertification:true, footerStyle:'plain',
     fields:{ dob:true, reg:true, gc:true, ear:true, color:true, weight:true }
   };
 }
@@ -3696,28 +3696,48 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   const breederName = [myProfileForPdf.first_name, myProfileForPdf.last_name].filter(Boolean).join(' ');
   const contactParts = [breederName, myProfileForPdf.website, myProfileForPdf.phone, pedigreeSettings2.social].map(v=>sanitizeForPdf(v||'')).filter(Boolean);
   const contactLine = contactParts.join('  \u00b7  ');
-  const footerH = pedigreeSettings2.hasCertification ? 74 : (contactLine? 16:0);
-  const footerTopY = M+footerH;
-  function drawRightAlignedText(text, rightX, yTop, font, size, color){ drawText(text, rightX-textWidth(text,font,size), yTop, font, size, color); }
-  if(!usingBackground && footerH>0) page.drawLine({ start:{x:M,y:footerTopY}, end:{x:W-M,y:footerTopY}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
-  let fy = footerTopY-14;
-  if(usingBackground){
-    const rightEdge = W-M;
-    if(contactLine){ drawRightAlignedText(contactLine, rightEdge, fy, fonts.sans, 7.5, gray); fy -= 16; }
-    if(pedigreeSettings2.hasCertification){
-      drawRightAlignedText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', rightEdge, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
-      fy -= 26;
-      const sigSize = 8;
-      const sigW=140, dateW=70, gapW=30;
-      const totalW = sigW+dateW+gapW+textWidth('Signature:',fonts.sans,sigSize)+textWidth('Date:',fonts.sans,sigSize)+12;
-      let lx = rightEdge - totalW;
-      const baseline = fy - sigSize*0.82;
-      drawText('Signature:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Signature:',fonts.sans,sigSize)+6;
-      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
-      drawText('Date:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Date:',fonts.sans,sigSize)+6;
-      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+dateW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+  const wantsBoxed = usingBackground && pedigreeSettings2.footerStyle==='boxed';
+  let footerH, footerTopY;
+
+  if(wantsBoxed){
+    const boxW = 200, boxX = W-M-boxW, contentW = boxW-16;
+    const contactLinesW = contactLine ? wrapTextBalanced(contactLine, fonts.sans, 6, contentW) : [];
+    const certLinesW = pedigreeSettings2.hasCertification ? wrapTextBalanced('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', fonts.serifItalic, 6.5, contentW) : [];
+    const hasSigRow = pedigreeSettings2.hasCertification;
+    let boxH = 0;
+    if(contactLinesW.length || certLinesW.length){
+      boxH = 8;
+      if(contactLinesW.length) boxH += contactLinesW.length*7 + 4;
+      if(certLinesW.length) boxH += certLinesW.length*7.5 + 6;
+      if(hasSigRow) boxH += 8 + 10 + 8;
+      boxH += 6;
+    }
+    footerH = boxH; footerTopY = M+boxH;
+    if(boxH>0){
+      page.drawRectangle({ x:boxX, y:M, width:boxW, height:boxH, borderColor:accent, borderWidth:0.75, color:white, opacity:0.86 });
+      let cy = M+boxH-8;
+      contactLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.sans, 6, gray); cy -= 7; });
+      if(contactLinesW.length) cy -= 4;
+      certLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.serifItalic, 6.5, rgb(0.2,0.2,0.2)); cy -= 7.5; });
+      if(certLinesW.length) cy -= 6;
+      if(hasSigRow){
+        const sigSize = 6.5;
+        const sigLabelW = textWidth('Signature:', fonts.sans, sigSize);
+        const sigBaseline = cy - sigSize*0.82;
+        drawText('Signature:', boxX+8, cy, fonts.sans, sigSize, gray);
+        page.drawLine({start:{x:boxX+8+sigLabelW+4,y:sigBaseline},end:{x:boxX+boxW-8,y:sigBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        cy -= 10;
+        const dateLabelW = textWidth('Date:', fonts.sans, sigSize);
+        const dateBaseline = cy - sigSize*0.82;
+        drawText('Date:', boxX+8, cy, fonts.sans, sigSize, gray);
+        page.drawLine({start:{x:boxX+8+dateLabelW+4,y:dateBaseline},end:{x:boxX+boxW-8,y:dateBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+      }
     }
   } else {
+    footerH = pedigreeSettings2.hasCertification ? 74 : (contactLine? 16:0);
+    footerTopY = M+footerH;
+    if(!usingBackground && footerH>0) page.drawLine({ start:{x:M,y:footerTopY}, end:{x:W-M,y:footerTopY}, thickness:0.5, color:rgb(0.85,0.85,0.85) });
+    let fy = footerTopY-14;
     if(contactLine){ drawCenteredText(contactLine, W/2, fy, fonts.sans, 7.5, gray); fy -= 16; }
     if(pedigreeSettings2.hasCertification){
       drawCenteredText('I hereby certify that this pedigree is correct to the best of my knowledge and belief.', W/2, fy, fonts.serifItalic, 9, rgb(0.2,0.2,0.2));
@@ -3911,6 +3931,12 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
         </div>
       </div>
       <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="pp-cert" ${draft.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
+      ${(hasCustomBackground && useBackgroundDraft)?`<div class="field"><label>Footer layout</label>
+        <div class="seg" id="pp-footerstyle">
+          <button type="button" data-v="plain" class="${(draft.footerStyle||'plain')==='plain'?'on':''}">Centered, no box</button>
+          <button type="button" data-v="boxed" class="${draft.footerStyle==='boxed'?'on':''}">Boxed, bottom corner</button>
+        </div>
+      </div>`:''}
       <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="pp-download">Save &amp; download</button></div>`);
     wireEvents();
     scheduleRegen(true);
@@ -3922,6 +3948,8 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     draft.printTheme = document.querySelector('#pp-theme button.on').dataset.v;
     draft.customAccent = document.getElementById('pp-customcolor').value;
     draft.hasCertification = document.getElementById('pp-cert').checked;
+    const footerStyleBtn = document.querySelector('#pp-footerstyle button.on');
+    if(footerStyleBtn) draft.footerStyle = footerStyleBtn.dataset.v;
     draft.fields = {
       dob: document.getElementById('pp-field-dob').checked,
       reg: document.getElementById('pp-field-reg').checked,
@@ -3987,6 +4015,11 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       document.getElementById(id).oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
     });
     document.getElementById('pp-cert').onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
+    const ppFooterStyleSeg = document.getElementById('pp-footerstyle');
+    if(ppFooterStyleSeg) ppFooterStyleSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+      ppFooterStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+      readDraftFromControls(); scheduleRegen(true);
+    });
     fieldRows.forEach(([k])=>{
       document.getElementById('pp-field-'+k).onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
     });
@@ -4765,6 +4798,12 @@ async function openPedigreeSettingsSheet(){
       <div class="seg" id="ps-theme">${themeButtonsHTML}</div>
     </div>
     <div class="field" id="ps-customwrap" style="${narrowedTheme==='custom'?'':'display:none;'}"><label>Custom accent color</label><input type="color" id="ps-customcolor" value="${esc(s.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
+    ${hasCustomBg?`<div class="field"><label>Footer layout</label>
+      <div class="seg" id="ps-footerstyle">
+        <button type="button" data-v="plain" class="${(s.footerStyle||'plain')==='plain'?'on':''}">Centered, no box</button>
+        <button type="button" data-v="boxed" class="${s.footerStyle==='boxed'?'on':''}">Boxed, bottom corner</button>
+      </div>
+    </div>`:''}
     <div class="field"><label>Fields to print</label>
       <div style="display:flex; flex-direction:column; gap:2px;">
         ${fieldRows.map(([k,l])=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;"><input type="checkbox" id="ps-field-${k}" ${s.fields[k]!==false?'checked':''} style="width:18px; height:18px;"> ${l}</label>`).join('')}
@@ -4798,6 +4837,10 @@ async function openPedigreeSettingsSheet(){
     document.querySelectorAll('#ps-theme button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
     document.getElementById('ps-customwrap').style.display = b.dataset.v==='custom' ? '' : 'none';
   });
+  const footerStyleSeg = document.getElementById('ps-footerstyle');
+  if(footerStyleSeg) footerStyleSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
+    footerStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
+  });
 
   document.getElementById('ps-save').onclick = async ()=>{
     pedigreeSettings.tagline = document.getElementById('ps-tagline').value.trim();
@@ -4805,6 +4848,8 @@ async function openPedigreeSettingsSheet(){
     pedigreeSettings.printTheme = document.querySelector('#ps-theme button.on').dataset.v;
     pedigreeSettings.customAccent = document.getElementById('ps-customcolor').value;
     pedigreeSettings.hasCertification = document.getElementById('ps-cert').checked;
+    const footerStyleBtn = document.querySelector('#ps-footerstyle button.on');
+    if(footerStyleBtn) pedigreeSettings.footerStyle = footerStyleBtn.dataset.v;
     pedigreeSettings.fields = {
       dob: document.getElementById('ps-field-dob').checked,
       reg: document.getElementById('ps-field-reg').checked,
