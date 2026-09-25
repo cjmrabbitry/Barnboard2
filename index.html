@@ -3929,7 +3929,8 @@ async function downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides){
     URL.revokeObjectURL(url);
   }catch(err){
     console.error(err);
-    showToast('Could not generate the official PDF — check console for details.');
+    alert('Pedigree PDF error:\n\n' + (err && err.message ? err.message : err));
+    showToast('Could not generate the official PDF.');
   }
 }
 
@@ -4056,7 +4057,7 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     }catch(err){
       console.error(err);
       const stillStatusEl = document.getElementById('ped-preview-status');
-      if(stillStatusEl) stillStatusEl.textContent = "Couldn't update the preview \u2014 check console for details.";
+      if(stillStatusEl) stillStatusEl.textContent = "Preview error: " + (err && err.message ? err.message : err);
     }
   }
 
@@ -4123,7 +4124,8 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
         showToast('Pedigree settings saved and PDF downloaded');
       }catch(err){
         console.error(err);
-        showToast('Could not generate the PDF — check console for details.');
+        alert('Pedigree PDF error:\n\n' + (err && err.message ? err.message : err));
+        showToast('Could not generate the PDF.');
       }
     };
   }
@@ -4286,7 +4288,8 @@ async function downloadOfficialPedigreePDF(r){
     URL.revokeObjectURL(url);
   }catch(err){
     console.error(err);
-    showToast('Could not generate the official PDF — check console for details.');
+    alert('Worst-case preview error:\n\n' + (err && err.message ? err.message : err));
+    showToast('Could not generate the preview.');
   }
 }
 
