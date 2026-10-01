@@ -2543,7 +2543,7 @@ function attachCardEvents(){
       else if(act==='graduate'){ r.status = r.sex==='doe'?'open':'available'; saveData(); render(); showToast(r.name+' moved to the main roster'); }
       else if(act==='unarchive') openUnarchive(r);
       else if(act==='edit') openEditSheet(r);
-      else if(act==='pedigree') downloadOfficialPedigreePDF(r);
+      else if(act==='pedigree') openRabbitProfile(r,'pedigree');
       else if(act==='wins') openWinsSheet(r);
       else if(act==='history') openHistorySheet(r);
     };
@@ -3821,6 +3821,38 @@ async function downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides){
    background on file: use it (the normal case), or skip it for this one
    download and pick from the full color range instead — nothing here is
    saved back to Pedigree settings. */
+// Renders a generated pedigree PDF's single page onto the live-preview
+// canvas, cropped to just the right half — the parent/grandparent/
+// great-grandparent columns a breeder actually checks at a glance —
+// instead of shrinking the whole landscape page (which made every box's
+// text too small to read). The PDF is always exactly one page, so there's
+// nothing lost by not showing the left half here; the real export still
+// contains the full page edge to edge.
+async function renderPedigreePreviewCanvas(bytes){
+  const visible = document.getElementById('ped-preview-canvas');
+  if(!visible) return;
+  if(!window.pdfjsLib) throw new Error("The PDF reader didn't load — refresh the page and try again.");
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const page = await pdf.getPage(1);
+  const renderScale = 2.5; // render crisp, then downscale into the box
+  const viewport = page.getViewport({ scale: renderScale });
+  const full = document.createElement('canvas');
+  full.width = viewport.width; full.height = viewport.height;
+  await page.render({ canvasContext: full.getContext('2d'), viewport }).promise;
+
+  const cropX = full.width * 0.5, cropW = full.width - cropX, cropH = full.height;
+  const dpr = window.devicePixelRatio || 1;
+  const boxW = visible.clientWidth || visible.parentElement.clientWidth || 300;
+  const boxH = 320;
+  visible.width = boxW * dpr; visible.height = boxH * dpr;
+  visible.style.width = boxW+'px'; visible.style.height = boxH+'px';
+  const ctx = visible.getContext('2d');
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, visible.width, visible.height);
+  const scale = Math.min(visible.width/cropW, visible.height/cropH);
+  const drawW = cropW*scale, drawH = cropH*scale;
+  const dx = (visible.width-drawW)/2, dy = (visible.height-drawH)/2;
+  ctx.drawImage(full, cropX, 0, cropW, cropH, dx, dy, drawW, drawH);
+}
 /* ---------------- LIVE PEDIGREE PREVIEW ----------------
    Shown whenever "Download Official Pedigree PDF" is tapped for an
    account on the dynamic renderer (generic template, or any custom
@@ -3831,7 +3863,7 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
   const draft = JSON.parse(JSON.stringify(pedigreeSettings));
   let useBackgroundDraft = hasCustomBackground;
   const fieldRows = [['dob','Date of birth'],['reg','Registration #'],['gc','GC #'],['ear','Ear #'],['color','Color'],['weight','Weight']];
-  let regenTimer = null, regenSeq = 0, lastBlobUrl = null;
+  let regenTimer = null, regenSeq = 0;
 
   function themeButtonsHTML(){
     const t = draft.printTheme==='sex' ? 'mono' : draft.printTheme;
@@ -3843,7 +3875,7 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
       <h2>${esc(r.name)} — Pedigree preview</h2>
       <div style="border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; margin-bottom:6px; background:#6b6e70;">
-        <iframe id="ped-preview-frame" style="width:100%; height:320px; border:none; display:block; background:#fff;"></iframe>
+        <canvas id="ped-preview-canvas" style="width:100%; height:320px; display:block; background:#fff;"></canvas>
       </div>
       <div id="ped-preview-status" class="card-sub" style="margin-bottom:12px; min-height:16px;">Loading preview&hellip;</div>
       ${hasCustomBackground?`<div class="field"><label>Background</label>
@@ -3929,12 +3961,8 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       if(hasCustomBackground) overrides.useBackground = useBackgroundDraft;
       const bytes = await buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides);
       if(mySeq!==regenSeq) return;
-      const blob = new Blob([bytes], { type:'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const frame = document.getElementById('ped-preview-frame');
-      if(frame) frame.src = url;
-      if(lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
-      lastBlobUrl = url;
+      await renderPedigreePreviewCanvas(bytes);
+      if(mySeq!==regenSeq) return;
       const stillStatusEl = document.getElementById('ped-preview-status');
       if(stillStatusEl) stillStatusEl.textContent = '';
     }catch(err){
@@ -4233,15 +4261,32 @@ function openLitterPedigreeSheet(dam){
   const sire = findByName(dam.partner);
   const ss = sire?ancestorByPath(sire.name,'s'):null, sd = sire?ancestorByPath(sire.name,'d'):null;
   const ds = ancestorByPath(dam.name,'s'), dd = ancestorByPath(dam.name,'d');
+  // Great-grandparents: PGS's parents, PGD's parents (sire's side), then
+  // MGS's parents, MGD's parents (dam's side) — same 8-box bottom row a
+  // full individual pedigree shows, just previewed on screen rather than
+  // exported, since this is for a litter that has no saved rabbit yet.
+  const sss = sire?ancestorByPath(sire.name,'ss'):null, ssd = sire?ancestorByPath(sire.name,'sd'):null;
+  const sds = sire?ancestorByPath(sire.name,'ds'):null, sdd = sire?ancestorByPath(sire.name,'dd'):null;
+  const dss = ancestorByPath(dam.name,'ss'), dsd = ancestorByPath(dam.name,'sd');
+  const dds = ancestorByPath(dam.name,'ds'), ddd = ancestorByPath(dam.name,'dd');
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>${esc(dam.name)}'s litter — pedigree preview</h2>
-    <div class="card-sub" style="margin-bottom:12px;">This is what any kit from this litter would inherit. Individual kits get their own editable pedigree once you tap "Create a profile."</div>
+    <div class="card-sub" style="margin-bottom:12px;">This is what any kit from this litter would inherit. Individual kits get their own editable pedigree (and PDF export) once you tap "Create a profile."</div>
     <div class="ped-gen"><div class="ped-gen-label">PARENTS</div><div class="ped-row">${pedBox(sire||{name:dam.partner},'','Sire')}${pedBox(dam,'','Dam')}</div></div>
     <div class="ped-gen"><div class="ped-gen-label">GRANDPARENTS</div>
       <div class="ped-side-label">SIRE'S SIDE</div>
       <div class="ped-row">${pedBox(ss,'','Grandsire')}${pedBox(sd,'','Granddam')}</div>
       <div class="ped-side-label">DAM'S SIDE</div>
       <div class="ped-row">${pedBox(ds,'','Grandsire')}${pedBox(dd,'','Granddam')}</div></div>
+    <div class="ped-gen"><div class="ped-gen-label">GREAT-GRANDPARENTS</div>
+      <div class="ped-side-label">PATERNAL GRANDSIRE'S SIDE</div>
+      <div class="ped-row">${pedBox(sss,'','GG Sire')}${pedBox(ssd,'','GG Dam')}</div>
+      <div class="ped-side-label">PATERNAL GRANDDAM'S SIDE</div>
+      <div class="ped-row">${pedBox(sds,'','GG Sire')}${pedBox(sdd,'','GG Dam')}</div>
+      <div class="ped-side-label">MATERNAL GRANDSIRE'S SIDE</div>
+      <div class="ped-row">${pedBox(dss,'','GG Sire')}${pedBox(dsd,'','GG Dam')}</div>
+      <div class="ped-side-label">MATERNAL GRANDDAM'S SIDE</div>
+      <div class="ped-row">${pedBox(dds,'','GG Sire')}${pedBox(ddd,'','GG Dam')}</div></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()" style="flex:1;">Close</button></div>`);
   document.querySelectorAll('#sheet [data-pedname]').forEach(b=>b.onclick=null);
 }
@@ -5106,8 +5151,8 @@ function profileTabsFor(r){
   tabs.push(['pedigree','Pedigree'],['photos','Photos'],['notes','Notes']);
   return tabs;
 }
-function openRabbitProfile(r){
-  profileRabbitId = r.id; profileTab='overview'; photoActiveCategory='Primary';
+function openRabbitProfile(r, startTab){
+  profileRabbitId = r.id; profileTab = startTab || 'overview'; photoActiveCategory='Primary';
   document.getElementById('profileView').classList.add('on');
   renderProfile();
 }
@@ -5140,7 +5185,7 @@ function renderProfile(){
   if(profileTab==='overview') body.innerHTML = overviewTabHTML(r);
   else if(profileTab==='breeding') body.innerHTML = breedingTabHTML(r);
   else if(profileTab==='litters') body.innerHTML = littersTabHTML(r);
-  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPrint">Print / Save PDF</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Pedigree</button></div>`;
+  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Print / Save PDF</button></div>`;
   else if(profileTab==='photos') body.innerHTML = photosTabHTML(r);
   else if(profileTab==='notes') body.innerHTML = notesTabHTML(r);
   wireProfileTab(r);
@@ -5236,7 +5281,6 @@ function wireProfileTab(r){
   }
   if(profileTab==='pedigree'){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
-    const pb=document.getElementById('profPrint'); if(pb) pb.onclick=()=>openPrintOptionsSheet(r, renderProfile);
     const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
   }
   if(profileTab==='litters'){ attachCardEvents(); }
