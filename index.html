@@ -1575,7 +1575,7 @@ function defaultPedigreeSettings(){
   return {
     logoDataUrl:null, social:'', tagline:'',
     printTheme:'mono', customAccent:'#c6a15b', hasCertification:true, footerStyle:'plain',
-    nameFont:'cormorant', titleFont:'cormorant', watermarkEnabled:false, watermarkText:'', watermarkFont:'script',
+    nameFont:'libre', titleFont:'libre', watermarkEnabled:false, watermarkText:'', watermarkFont:'libre',
     fields:{ dob:true, reg:true, gc:true, ear:true, color:true, weight:true }
   };
 }
@@ -1586,7 +1586,7 @@ const FONT_OPTIONS = [
   ['blackletter','Blackletter'], ['handwritten','Handwritten']
 ];
 function fontSegHTML(id, current, fallback){
-  const cur = current || fallback || 'cormorant';
+  const cur = current || fallback || 'libre';
   return `<select id="${id}">${FONT_OPTIONS.map(([v,l])=>`<option value="${v}" ${cur===v?'selected':''}>${esc(l)}</option>`).join('')}</select>`;
 }
 let pedigreeSettings = defaultPedigreeSettings();
@@ -3822,12 +3822,12 @@ async function downloadDynamicGenericPedigreePDF(r, myProfileForPdf, overrides){
    download and pick from the full color range instead — nothing here is
    saved back to Pedigree settings. */
 // Renders a generated pedigree PDF's single page onto the live-preview
-// canvas, cropped to just the right half — the parent/grandparent/
-// great-grandparent columns a breeder actually checks at a glance —
-// instead of shrinking the whole landscape page (which made every box's
-// text too small to read). The PDF is always exactly one page, so there's
-// nothing lost by not showing the left half here; the real export still
-// contains the full page edge to edge.
+// canvas, scaled to fit the whole page — so the entire pedigree (every
+// generation, both sides) is visible at a glance rather than only a
+// slice of it. (A previous version cropped to just the right half, but
+// the box tree's actual content doesn't start as far right as that
+// assumed, so it was cutting off real boxes and part of the header —
+// showing the full page, smaller, beats showing part of it bigger.)
 async function renderPedigreePreviewCanvas(bytes){
   const visible = document.getElementById('ped-preview-canvas');
   if(!visible) return;
@@ -3840,7 +3840,6 @@ async function renderPedigreePreviewCanvas(bytes){
   full.width = viewport.width; full.height = viewport.height;
   await page.render({ canvasContext: full.getContext('2d'), viewport }).promise;
 
-  const cropX = full.width * 0.5, cropW = full.width - cropX, cropH = full.height;
   const dpr = window.devicePixelRatio || 1;
   const boxW = visible.clientWidth || visible.parentElement.clientWidth || 300;
   const boxH = 320;
@@ -3848,10 +3847,10 @@ async function renderPedigreePreviewCanvas(bytes){
   visible.style.width = boxW+'px'; visible.style.height = boxH+'px';
   const ctx = visible.getContext('2d');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, visible.width, visible.height);
-  const scale = Math.min(visible.width/cropW, visible.height/cropH);
-  const drawW = cropW*scale, drawH = cropH*scale;
+  const scale = Math.min(visible.width/full.width, visible.height/full.height);
+  const drawW = full.width*scale, drawH = full.height*scale;
   const dx = (visible.width-drawW)/2, dy = (visible.height-drawH)/2;
-  ctx.drawImage(full, cropX, 0, cropW, cropH, dx, dy, drawW, drawH);
+  ctx.drawImage(full, 0, 0, full.width, full.height, dx, dy, drawW, drawH);
 }
 /* ---------------- LIVE PEDIGREE PREVIEW ----------------
    Shown whenever "Download Official Pedigree PDF" is tapped for an
@@ -3894,10 +3893,10 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       </div>
       <div class="field"><label>Tagline (optional)</label><input id="pp-tagline" value="${esc(draft.tagline||'')}"></div>
       <div class="field"><label>"Pedigree" title font</label>
-        ${fontSegHTML('pp-titlefont', draft.titleFont, 'cormorant')}
+        ${fontSegHTML('pp-titlefont', draft.titleFont, 'libre')}
       </div>
       <div class="field"><label>Rabbitry name font</label>
-        ${fontSegHTML('pp-namefont', draft.nameFont, 'cormorant')}
+        ${fontSegHTML('pp-namefont', draft.nameFont, 'libre')}
       </div>
       <div class="field"><label>Instagram / Facebook</label><input id="pp-social" value="${esc(draft.social||'')}"></div>
       <div class="field"><label>Print colors</label><div class="seg" id="pp-theme">${themeButtonsHTML()}</div></div>
@@ -3912,7 +3911,7 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       <div class="field" id="pp-watermarkwrap" style="${draft.watermarkEnabled?'':'display:none;'}">
         <label>Watermark text</label><input id="pp-watermarktext" value="${esc(draft.watermarkText||'')}" placeholder="Defaults to your rabbitry name">
         <label style="margin-top:8px;">Watermark font</label>
-        ${fontSegHTML('pp-watermarkfont', draft.watermarkFont, 'script')}
+        ${fontSegHTML('pp-watermarkfont', draft.watermarkFont, 'libre')}
       </div>
       ${(hasCustomBackground && useBackgroundDraft)?`<div class="field"><label>Footer layout</label>
         <div class="seg" id="pp-footerstyle">
@@ -4835,10 +4834,10 @@ async function openPedigreeSettingsSheet(){
     </div>
     <div class="field"><label>Tagline (optional)</label><input id="ps-tagline" value="${esc(s.tagline||'')}" placeholder="Est. 2021 &middot; Purebred &amp; Proud"></div>
     <div class="field"><label>"Pedigree" title font</label>
-      ${fontSegHTML('ps-titlefont', s.titleFont, 'cormorant')}
+      ${fontSegHTML('ps-titlefont', s.titleFont, 'libre')}
     </div>
     <div class="field"><label>Rabbitry name font</label>
-      ${fontSegHTML('ps-namefont', s.nameFont, 'cormorant')}
+      ${fontSegHTML('ps-namefont', s.nameFont, 'libre')}
     </div>
     <div class="field"><label>Instagram / Facebook</label><input id="ps-social" value="${esc(s.social||'')}" placeholder="@yourrabbitry"></div>
     <div class="field"><label>Print colors</label>
@@ -4861,7 +4860,7 @@ async function openPedigreeSettingsSheet(){
     <div class="field" id="ps-watermarkwrap" style="${s.watermarkEnabled?'':'display:none;'}">
       <label>Watermark text</label><input id="ps-watermarktext" value="${esc(s.watermarkText||'')}" placeholder="Defaults to your rabbitry name">
       <label style="margin-top:8px;">Watermark font</label>
-      ${fontSegHTML('ps-watermarkfont', s.watermarkFont, 'script')}
+      ${fontSegHTML('ps-watermarkfont', s.watermarkFont, 'libre')}
     </div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="ps-save">Save</button></div>`);
 
