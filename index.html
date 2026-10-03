@@ -508,6 +508,7 @@
 <input type="file" id="csvFileInput" accept=".csv,text/csv" style="display:none;">
 <input type="file" id="pedigreePdfFileInput" accept=".pdf,application/pdf" multiple style="display:none;">
 <input type="file" id="pedigreeAiFileInput" accept=".pdf,application/pdf,image/*" multiple style="display:none;">
+<input type="file" id="pedigreeJsonFileInput" accept=".json,application/json" style="display:none;">
 
 <script>
 if (window.pdfjsLib) { pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.min.js'; }
@@ -527,9 +528,27 @@ const legacyStorage = {
   set: async (key,val)=>{ localStorage.setItem('cjm_'+key,val); return {ok:true}; }
 };
 
+// Bumped on every initCloudStorage call so an older, slower-to-resolve
+// call can tell it's been superseded and discard its own result instead
+// of clobbering cloudDataCache after a newer call already finished
+// loading. Without this, two overlapping loads (e.g. the auth listener
+// firing more than once during sign-in) could race: the fast one
+// finishes with the real data, the slow one finishes after it and
+// overwrites that with whatever it saw (possibly nothing yet) — and
+// cloudDataReady being true the whole time meant a save could fire
+// and permanently commit that half-loaded state. This was the likely
+// mechanism behind a real account-wiping incident (see
+// supabase_barn_data_atomic_save_migration.sql for the matching
+// database-side fix, which is the half of this that actually matters
+// most: even with this guard, a save should never be able to replace
+// real data with nothing).
+let cloudInitToken = 0;
 async function initCloudStorage(user){
+  const myToken = ++cloudInitToken;
   currentUser = user;
+  cloudDataReady = false; // no save can go through until THIS load actually finishes
   const {data:row,error} = await sb.from('barn_data').select('data').eq('user_id',user.id).maybeSingle();
+  if(myToken !== cloudInitToken) return; // a newer call superseded this one — discard, don't apply
   if(error) throw error;
   if(row && row.data){
     cloudDataCache = row.data || {};
@@ -543,6 +562,7 @@ async function initCloudStorage(user){
       }
     }
   }
+  if(myToken !== cloudInitToken) return; // re-check: a newer call could have started during the legacy-migration awaits above
   cloudDataReady = true;
   window.storage = {
     get: async (key)=>{
@@ -551,14 +571,37 @@ async function initCloudStorage(user){
       const v=cloudDataCache[key];
       return {value:typeof v==='string'?v:JSON.stringify(v)};
     },
+    // Saves go through the set_barn_data_key database function
+    // (supabase_barn_data_atomic_save_migration.sql) instead of
+    // reading cloudDataCache's full contents and upserting the whole
+    // thing. That old approach meant any single save silently
+    // overwrote EVERY key for the account with whatever the browser's
+    // copy currently held — including, if the browser's copy was ever
+    // incomplete, wiping out real data the browser just hadn't loaded
+    // yet. The database function instead updates only the one key
+    // being saved, atomically, and refuses to replace a populated
+    // list with an empty one unless explicitly forced — so a stale or
+    // half-loaded browser session can no longer destroy data it never
+    // actually saw.
     set: async (key,val)=>{
       if(!cloudDataReady || !currentUser) throw new Error('Not signed in');
       let parsed;
       try{ parsed=JSON.parse(val); }catch(e){ parsed=val; }
       const oldVal = cloudDataCache[key];
       cloudDataCache[key]=parsed;
-      const {error}=await sb.from('barn_data').upsert({user_id:currentUser.id,data:cloudDataCache},{onConflict:'user_id'});
-      if(error) throw error;
+      const rpcArgs = { p_key:key, p_value:parsed };
+      // Admin "view as customer" writes to the customer's row, not the
+      // signed-in admin's own — set_barn_data_key checks the caller is
+      // actually an admin before honoring p_target_user.
+      if(viewingAsCustomer && adminSelf) rpcArgs.p_target_user = viewingAsCustomer.id;
+      const {error} = await sb.rpc('set_barn_data_key', rpcArgs);
+      if(error){
+        cloudDataCache[key] = oldVal; // roll the in-memory copy back — it was never actually saved
+        if(/REFUSED_EMPTY_OVERWRITE/.test(error.message||'')){
+          showToast("That change wasn't saved — it looked like it would erase existing data, so it was blocked to be safe. Try again, and let us know if this keeps happening.");
+        }
+        throw error;
+      }
       if(viewingAsCustomer && adminSelf){
         sb.from('audit_log').insert({
           admin_id: adminSelf.id, customer_id: viewingAsCustomer.id,
@@ -3488,6 +3531,7 @@ function pedigreeFieldLine(item, fields, includeGC){
   if(fields.ear && item.earNumber) parts.push(item.earNumber);
   if(fields.weight && item.weight) parts.push(item.weight+' lbs');
   if(fields.color && item.color) parts.push(item.color);
+  if(fields.dob!==false && item.dob) parts.push(fmtDateShort(item.dob));
   if(fields.reg && item.registrationNumber) parts.push('Reg '+item.registrationNumber);
   if(includeGC && fields.gc && item.gcNumber) parts.push('GC '+item.gcNumber);
   return parts.join('  \u00b7  ');
@@ -3740,6 +3784,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     if(fields.ear && anc.earNumber) l.push(`Ear #: ${anc.earNumber}`);
     if(fields.weight && anc.weight) l.push(`Weight: ${anc.weight} lbs`);
     if(fields.color && anc.color) l.push(`Color: ${anc.color}`);
+    if(fields.dob!==false && anc.dob) l.push(`DOB: ${fmtDate(anc.dob)}`);
     if(fields.reg && anc.registrationNumber) l.push(`Reg #: ${anc.registrationNumber}`);
     if(includeGC && fields.gc && anc.gcNumber) l.push(`GC #: ${anc.gcNumber}`);
     if(anc.legsWins) l.push(`Legs: ${anc.legsWins}`);
@@ -3788,6 +3833,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
       if(fields.ear && anc.earNumber) parts.push(anc.earNumber);
       if(fields.weight && anc.weight) parts.push(anc.weight+' lbs');
       if(fields.color && anc.color) parts.push(anc.color);
+      if(fields.dob!==false && anc.dob) parts.push(fmtDateShort(anc.dob));
       if(fields.reg && anc.registrationNumber) parts.push('Reg '+anc.registrationNumber);
       if(fields.gc && anc.gcNumber) parts.push('GC '+anc.gcNumber);
       if(anc.legsWins) parts.push('Legs: '+anc.legsWins);
@@ -6442,8 +6488,11 @@ function openImportPedigreePdfSheet(){
     <button class="btn btn-primary" style="width:100%;" id="pdfPickBtn">Choose pedigree PDF(s)</button>
     <div class="card-sub" style="margin:14px 0 8px;">Or, for a scanned/photographed pedigree, or a PDF that doesn't read cleanly above — have AI read it visually instead:</div>
     <div id="pedAiGateArea">${pedigreeAiGateHTML()}</div>
+    <div class="card-sub" style="margin:14px 0 8px;">Or, if Claude already read a batch of pedigrees for you and gave you a .json file back:</div>
+    <button class="btn" style="width:100%;" id="pedJsonPickBtn">Load pedigree JSON from Claude</button>
     <div id="csvPreviewArea"></div>`);
   document.getElementById('pdfPickBtn').onclick = ()=>document.getElementById('pedigreePdfFileInput').click();
+  document.getElementById('pedJsonPickBtn').onclick = ()=>document.getElementById('pedigreeJsonFileInput').click();
   wirePedigreeAiGate();
   document.getElementById('pedigreePdfFileInput').onchange = async (e)=>{
     const files = Array.from(e.target.files||[]); e.target.value='';
@@ -6500,6 +6549,53 @@ function openImportPedigreePdfSheet(){
     if(gateArea){ gateArea.innerHTML = pedigreeAiGateHTML(); wirePedigreeAiGate(); }
     if(!allRows.length){
       area.innerHTML = `<div class="dupe-box">None of the selected files could be read.</div>` + pedigreeBatchFileReportHTML(fileReports);
+      return;
+    }
+    csvImportRows = mergePedigreeBatchRows(allRows);
+    renderPedigreeBatchPreview(fileReports);
+  };
+  // Lets a batch of pedigrees Claude already read (outside the app —
+  // e.g. the breeder just handed Claude a stack of photos in chat) be
+  // imported the same way a Scan-with-AI batch would be, without
+  // spending a scan credit or calling the edge function at all: skip
+  // straight from "slots" JSON to the same row-building/merge/review
+  // pipeline every other import path above already uses. Expects
+  // either a single {SELF:{...},SIRE:{...},...} slots object, or an
+  // array of those (optionally wrapped as {fileName, slots} pairs) —
+  // Claude is told this shape when asked to produce the file.
+  document.getElementById('pedigreeJsonFileInput').onchange = async (e)=>{
+    const file = (e.target.files||[])[0]; e.target.value='';
+    if(!file) return;
+    const area = document.getElementById('csvPreviewArea');
+    area.innerHTML = `<div class="empty">Reading ${esc(file.name)}…</div>`;
+    let parsed;
+    try{
+      parsed = JSON.parse(await file.text());
+    }catch(err){
+      area.innerHTML = `<div class="dupe-box">That file isn't valid JSON — make sure it's the .json file Claude gave you, unedited.</div>`;
+      return;
+    }
+    const entries = Array.isArray(parsed) ? parsed : [parsed];
+    const fileReports = [];
+    let allRows = [];
+    entries.forEach((entry, i)=>{
+      const name = (entry && entry.fileName) || `Pedigree ${i+1}`;
+      const slots = (entry && entry.slots && typeof entry.slots==='object') ? entry.slots : entry;
+      if(!slots || typeof slots!=='object' || !slots.SELF || !slots.SELF.name){
+        fileReports.push({name, ok:false, error:"No SELF.name found — this entry doesn't look like a pedigree slots object."});
+        return;
+      }
+      try{
+        const rows = buildPedigreeRowsFromSlots(slots, EVERBREED_PDF_BOXES.map(b=>b[0]));
+        fileReports.push({name, ok:true, rowCount:rows.length});
+        allRows = allRows.concat(rows);
+      }catch(err){
+        console.error(err);
+        fileReports.push({name, ok:false, error:"Couldn't process this entry's data."});
+      }
+    });
+    if(!allRows.length){
+      area.innerHTML = `<div class="dupe-box">None of the entries in this file could be read.</div>` + pedigreeBatchFileReportHTML(fileReports);
       return;
     }
     csvImportRows = mergePedigreeBatchRows(allRows);
