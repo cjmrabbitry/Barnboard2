@@ -4576,8 +4576,33 @@ async function openMyInfoSheet(){
     }
   };
 }
+function openAncestorCleanupSheet(){
+  const cands = rabbits.filter(r=>
+    (r.status==='open'||r.status==='available') && !r.external && !r.forSale &&
+    !(r.breedingHistory&&r.breedingHistory.length) && !r.activeBreedingId &&
+    !(r.photos&&r.photos.length) && !(r.notesLog&&r.notesLog.length) && !(r.notes&&r.notes.trim()&&!/^GC #:/.test(r.notes.trim())) &&
+    !r.litterBornDate && !(r.weightLog&&r.weightLog.length)
+  ).sort((a,b)=>a.name.localeCompare(b.name));
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Move herd rabbits to Ancestors</h2>
+    <div class="card-sub" style="margin-bottom:10px;">These herd rabbits have no breedings, litters, photos, weights or notes. Check the ones that are only pedigree ancestors (not rabbits you actually own). Nothing is deleted &mdash; they move to More &rarr; Ancestors and can be moved back by editing them.</div>
+    ${cands.length?`<div class="row2" style="margin-bottom:8px;"><button class="btn btn-secondary btn-sm" id="clAll">Check all</button><button class="btn btn-secondary btn-sm" id="clNone">Uncheck all</button></div>
+    <div style="max-height:50vh; overflow-y:auto;">${cands.map(r=>`<label class="card no-tap" style="display:flex; align-items:center; gap:8px;"><input type="checkbox" data-clean="${esc(r.id)}"><div><div class="card-name" style="font-size:14px;">${esc(r.name)}</div><div class="card-sub">${[r.sex,r.breed,r.color,r.earNumber?('Ear# '+r.earNumber):''].filter(Boolean).map(esc).join(' &middot; ')}</div></div></label>`).join('')}</div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="clMove">Move checked</button></div>`
+    :`<div class="empty">No candidates found.</div>`}`);
+  if(!cands.length) return;
+  const boxes=()=>Array.from(document.querySelectorAll('[data-clean]'));
+  document.getElementById('clAll').onclick=()=>boxes().forEach(b=>b.checked=true);
+  document.getElementById('clNone').onclick=()=>boxes().forEach(b=>b.checked=false);
+  document.getElementById('clMove').onclick=async ()=>{
+    const ids=new Set(boxes().filter(b=>b.checked).map(b=>b.dataset.clean));
+    if(!ids.size){ showToast('Nothing checked'); return; }
+    rabbits.forEach(r=>{ if(ids.has(r.id)){ r.status='external'; r.external=true; } });
+    await saveData(); closeSheet(); render();
+    showToast(ids.size+' moved to Ancestors');
+  };
+}
 async function openMoreSheet(){
-  const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['pedigreesettings','Pedigree settings'],['ancestors','Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
+  const items=[['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['pedigreesettings','Pedigree settings'],['ancestors','Ancestors'],['cleanup','Move herd rabbits to Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['backup','Backup and restore']];
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
       <div class="section-label" style="margin:0 0 3px;">SIGNED IN AS</div>
@@ -4599,6 +4624,7 @@ async function openMoreSheet(){
     else if(k==='import') openImportCsvSheet();
     else if(k==='importpdf') openImportPedigreePdfSheet();
     else if(k==='shows') openShowsSheet();
+    else if(k==='cleanup') openAncestorCleanupSheet();
     else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
   });
   document.getElementById('signOutBtn').onclick = async ()=>{
@@ -5751,6 +5777,8 @@ async function commitCsvImport(){
       const ex = row.existing;
       Object.keys(row.data).forEach(k=>{
         if(!row.data[k]) return;
+        // Pedigree imports guess a herd status for every row; never let that overwrite an existing rabbit's real status.
+        if(k==='status' && row.isSelf!==undefined) return;
         if(k==='notes'){
           // Import "notes" is really just an auto-generated tag (e.g.
           // "GC #: 12345"), not free text the person wrote themselves
@@ -5780,9 +5808,12 @@ async function commitCsvImport(){
         }
         ex[k]=row.data[k];
       });
+      if(ex.external && row.isSelf===true){ ex.external=false; ex.status=row.data.status; }
       updated++;
     } else {
-      rabbits.push(blankRabbit(row.data));
+      const nr = blankRabbit(row.data);
+      if(row.isSelf===false){ nr.status='external'; nr.external=true; }
+      rabbits.push(nr);
       imported++;
     }
   });
@@ -6508,7 +6539,7 @@ function openImportPedigreePdfSheet(){
         const result = await parsePedigreePdf(buf);
         if(!result.ok){ fileReports.push({name:file.name, ok:false, error:result.error}); continue; }
         fileReports.push({name:file.name, ok:true, rowCount:result.rows.length});
-        allRows = allRows.concat(result.rows);
+        allRows = allRows.concat(markSelfRow(result.rows));
       }catch(err){
         console.error(err);
         fileReports.push({name:file.name, ok:false, error:"Couldn't read this PDF — make sure it's a Rabbit Register, Everbreed, or Who's Due pedigree export."});
@@ -6535,7 +6566,7 @@ function openImportPedigreePdfSheet(){
         if(!result.ok){ fileReports.push({name:file.name, ok:false, error:result.error}); continue; }
         const rows = buildPedigreeRowsFromSlots(result.slots, EVERBREED_PDF_BOXES.map(b=>b[0]));
         fileReports.push({name:file.name, ok:true, rowCount:rows.length});
-        allRows = allRows.concat(rows);
+        allRows = allRows.concat(markSelfRow(rows));
       }catch(err){
         console.error(err);
         fileReports.push({name:file.name, ok:false, error:"Something went wrong reading this one with AI — try again, or use the regular PDF importer above."});
@@ -6588,7 +6619,7 @@ function openImportPedigreePdfSheet(){
       try{
         const rows = buildPedigreeRowsFromSlots(slots, EVERBREED_PDF_BOXES.map(b=>b[0]));
         fileReports.push({name, ok:true, rowCount:rows.length});
-        allRows = allRows.concat(rows);
+        allRows = allRows.concat(markSelfRow(rows));
       }catch(err){
         console.error(err);
         fileReports.push({name, ok:false, error:"Couldn't process this entry's data."});
@@ -6666,6 +6697,10 @@ function pedigreeBatchFileReportHTML(fileReports){
 // without this pass every repeat would queue up as its own separate
 // "new" row instead of one row updated from whichever file had the
 // most complete details for it.
+// The first row of each pedigree is the rabbit the pedigree is FOR; every
+// other row is an ancestor, which should be saved as a pedigree-only
+// record (More > Ancestors), not as a rabbit in the herd.
+function markSelfRow(rows){ rows.forEach((r,i)=>{ r.isSelf = (i===0); }); return rows; }
 function mergePedigreeBatchRows(allRows){
   const byName = new Map();
   allRows.forEach(row=>{
@@ -6688,6 +6723,7 @@ function mergePedigreeBatchRows(allRows){
       }
       if(!prior.data[k] && row.data[k]) prior.data[k]=row.data[k];
     });
+    if(row.isSelf) prior.isSelf = true;
     prior.seenIn = (prior.seenIn||1)+1;
   });
   return Array.from(byName.values());
@@ -6711,6 +6747,7 @@ function renderPedigreeBatchPreview(fileReports){
         ${row.existing?`<button data-v="update" class="${row.action==='update'?'on':''}">Update</button>`:''}
         <button data-v="new" class="${row.action==='new'?'on':''}">${row.existing?'Import as new':'Import'}</button>
       </div>
+      <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-top:8px;"><input type="checkbox" data-pedherd="${i}" ${row.isSelf?'checked':''}> Add to my herd (unchecked = pedigree-only ancestor)</label>
     </div>`;
   };
   area.innerHTML = `
@@ -6731,6 +6768,7 @@ function renderPedigreeBatchPreview(fileReports){
       b.classList.add('on');
     });
   });
+  document.querySelectorAll('[data-pedherd]').forEach(cb=>cb.onchange=()=>{ csvImportRows[+cb.dataset.pedherd].isSelf = cb.checked; });
   document.getElementById('pedBatchSkipAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='skip'; }); renderPedigreeBatchPreview(fileReports); };
   document.getElementById('pedBatchUpdateAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='update'; }); renderPedigreeBatchPreview(fileReports); };
   document.getElementById('pedBatchFilter').oninput = (e)=>{
