@@ -1724,7 +1724,8 @@ async function saveData(){
     return true;
   }catch(e){
     console.error(e);
-    showSaveError("Your last change didn't save. This usually means a connection hiccup or a temporary issue reaching your HerdNerd Pro account — check your internet connection and try again. Nothing new will save until this is resolved.");
+    const why = (e && (e.message||e.details||e.hint)) ? ' Technical detail: '+String(e.message||e.details||e.hint).slice(0,300) : '';
+    showSaveError("Your last change didn't save, so the editor was left open. This usually means a connection hiccup or a temporary issue reaching your HerdNerd Pro account — check your internet connection and try Save again."+why);
     return false;
   }
 }
@@ -2911,7 +2912,7 @@ function openEditSheet(r, origin){
       if(finalSire) ensureAncestor(finalSire,'buck');
       if(finalDam) ensureAncestor(finalDam,'doe');
       if(r.status==='growing'&&r.dob) r.flag='';
-      saveData(); done(origin);
+      saveData().then(ok=>{ if(ok) done(origin); });
     }));
   };
   const dec=document.getElementById('f-deceased');
@@ -3105,7 +3106,7 @@ function openAncestorSheet(anc, origin){
     anc.dob=csvParseDate(document.getElementById('f-adob').value)||null; anc.gcNumber=document.getElementById('f-agc').value;
     anc.color=document.getElementById('f-acolor').value; anc.legsWins=document.getElementById('f-alegs').value;
     anc.registrationNumber=document.getElementById('f-areg').value;
-    saveData(); done(origin);
+    saveData().then(ok=>{ if(ok) done(origin); });
   };
   document.getElementById('f-adelete').onclick=(e)=>{ armConfirm(e.target, 'Tap again to confirm', ()=>{ rabbits=rabbits.filter(x=>x.id!==anc.id); saveData(); done(origin); }); };
 }
@@ -3212,7 +3213,7 @@ function openQuickNameSheet(parent, rel, back){
         // fill in any blanks on the existing pedigree-only record with what was just typed
         Object.keys(fields).forEach(k=>{ if(!anc[k] && fields[k]) anc[k]=fields[k]; });
       }
-      saveData(); done(back);
+      saveData().then(ok=>{ if(ok) done(back); });
     };
     if(rabbits.some(x=>x.name.trim().toLowerCase()===name.toLowerCase())) return commit(name);
     const m=fuzzyMatches(name);
