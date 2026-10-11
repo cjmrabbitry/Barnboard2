@@ -1662,6 +1662,14 @@ function inMoneyPeriod(dateStr, period){
 function startOfWeek(d){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()-x.getDay()); return x.toISOString().slice(0,10); }
 function uid(){ return 'r'+Math.random().toString(36).slice(2,10); }
 function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Weight display: add " lbs" only when the typed value has no unit of its own.
+// "3" -> "3 lbs", "3.4" -> "3.4 lbs", "3lbs 4oz" / "3 lb 7 oz" / "12oz" stay as typed.
+function fmtWeight(w){
+  const s = String(w==null?'':w).trim();
+  if(!s) return '';
+  if(/[a-z]/i.test(s)) return s;
+  return s+' lbs';
+}
 
 function blankRabbit(over){
   return Object.assign({
@@ -2032,7 +2040,7 @@ function nurseryCardHTML(r){
     </div></div>`;
 }
 function ancestorCardHTML(r){
-  const b=[]; if(r.breed)b.push(r.breed); if(r.color)b.push(r.color); if(r.earNumber)b.push('Ear# '+r.earNumber); if(r.weight)b.push(r.weight+' lbs'); if(r.legsWins)b.push(r.legsWins);
+  const b=[]; if(r.breed)b.push(r.breed); if(r.color)b.push(r.color); if(r.earNumber)b.push('Ear# '+r.earNumber); if(r.weight)b.push(fmtWeight(r.weight)); if(r.legsWins)b.push(r.legsWins);
   return `<div class="card"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${esc(b.join(' · '))||'No details yet'}</div></div></div>
     ${(r.sireName||r.damName)?`<div class="card-detail">Sire: ${esc(r.sireName||'?')} &middot; Dam: ${esc(r.damName||'?')}</div>`:''}
     <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit details</button></div></div>`;
@@ -3247,13 +3255,13 @@ function ppBoxFieldsFull(n){
     <div class="pp-line"><b>Reg #:</b> ${esc(n.registrationNumber||'')}</div>
     <div class="pp-line"><b>GC #:</b> ${esc(n.gcNumber||'')}</div>
     <div class="pp-line"><b>Color:</b> ${esc(n.color||'')}</div>
-    <div class="pp-line"><b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
+    <div class="pp-line"><b>Weight:</b> ${esc(fmtWeight(n.weight))}</div>
     <div class="pp-line"><b>Legs:</b> ${esc(n.legsWins||'')}</div>`;
 }
 function ppBoxFieldsCompact(n){
   return `<div class="pp-line-compact"><b>Name:</b> ${esc(n.name||'')} &nbsp; <b>Ear #:</b> ${esc(n.earNumber||'')}</div>
     <div class="pp-line-compact"><b>Reg #:</b> ${esc(n.registrationNumber||'')} &nbsp; <b>GC #:</b> ${esc(n.gcNumber||'')}</div>
-    <div class="pp-line-compact"><b>Color:</b> ${esc(n.color||'')} &nbsp; <b>Weight:</b> ${n.weight?esc(n.weight)+' lbs':''}</div>
+    <div class="pp-line-compact"><b>Color:</b> ${esc(n.color||'')} &nbsp; <b>Weight:</b> ${esc(fmtWeight(n.weight))}</div>
     <div class="pp-line-compact"><b>Legs:</b> ${esc(n.legsWins||'')}</div>`;
 }
 function ppBoxFieldsSimple(n){
@@ -3426,7 +3434,7 @@ function fillAncestorBoxValues(prefix, anc, put){
   if(!anc) return;
   put(`${prefix}_NAME`, anc.name);
   put(`${prefix}_EAR`, anc.earNumber);
-  put(`${prefix}_WEIGHT`, anc.weight);
+  put(`${prefix}_WEIGHT`, fmtWeight(anc.weight));
   put(`${prefix}_COLOR`, anc.color);
   put(`${prefix}_LEGS`, anc.legsWins);
 }
@@ -3549,7 +3557,7 @@ function pedigreeWinLineText(w){ return [abbreviateAward(w.award), w.date?fmtDat
 function pedigreeFieldLine(item, fields, includeGC){
   const parts=[];
   if(fields.ear && item.earNumber) parts.push(item.earNumber);
-  if(fields.weight && item.weight) parts.push(item.weight+' lbs');
+  if(fields.weight && item.weight) parts.push(fmtWeight(item.weight));
   if(fields.color && item.color) parts.push(item.color);
   if(fields.dob!==false && item.dob) parts.push(fmtDateShort(item.dob));
   if(fields.reg && item.registrationNumber) parts.push('Reg '+item.registrationNumber);
@@ -3802,7 +3810,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     if(!anc || !anc.name) return null;
     const l=[`Name: ${anc.name}`];
     if(fields.ear && anc.earNumber) l.push(`Ear #: ${anc.earNumber}`);
-    if(fields.weight && anc.weight) l.push(`Weight: ${anc.weight} lbs`);
+    if(fields.weight && anc.weight) l.push(`Weight: ${fmtWeight(anc.weight)}`);
     if(fields.color && anc.color) l.push(`Color: ${anc.color}`);
     if(fields.dob!==false && anc.dob) l.push(`DOB: ${fmtDate(anc.dob)}`);
     if(fields.reg && anc.registrationNumber) l.push(`Reg #: ${anc.registrationNumber}`);
@@ -3851,7 +3859,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     const parts=[];
     if(anc){
       if(fields.ear && anc.earNumber) parts.push(anc.earNumber);
-      if(fields.weight && anc.weight) parts.push(anc.weight+' lbs');
+      if(fields.weight && anc.weight) parts.push(fmtWeight(anc.weight));
       if(fields.color && anc.color) parts.push(anc.color);
       if(fields.dob!==false && anc.dob) parts.push(fmtDateShort(anc.dob));
       if(fields.reg && anc.registrationNumber) parts.push('Reg '+anc.registrationNumber);
