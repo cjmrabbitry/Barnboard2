@@ -80,6 +80,7 @@
   /* Keep the page the same width whether or not it is tall enough to scroll, so the search bar does not grow and shrink when you switch Herd / All. */
   html{ scrollbar-gutter:stable; }
   @supports not (scrollbar-gutter:stable){ html{ overflow-y:scroll; } }
+  #searchModeSeg{ display:none !important; }
   .search-mode{ flex:0 0 auto; flex-direction:column; gap:3px; padding:3px; width:64px; height:46px; box-sizing:border-box; border-radius:12px; border:1.5px solid var(--line,#CABB95); background:var(--card,#FFFDF8); }
   .search-mode button{ display:flex; align-items:center; justify-content:center; flex:1 1 0; width:100%; height:auto; align-self:stretch; min-height:0 !important; padding:0 !important; font-size:11px !important; font-weight:700 !important; line-height:1; letter-spacing:.01em; border-radius:8px !important; border:0 !important; background:transparent !important; color:var(--ink-soft,#475569) !important; white-space:nowrap; transition:background .15s,color .15s; }
   .search-mode button.on{ background:var(--navy) !important; color:var(--page,#F7F2E6) !important; }
@@ -1055,6 +1056,9 @@ async function initCloudStorage(user, opts){
       let parsed;
       try{ parsed=JSON.parse(val); }catch(e){ parsed=val; }
       const oldVal = cloudDataCache[key];
+      // Nothing changed since this list was loaded or last saved: skip the database call. The database already
+      // holds exactly this, so nothing is lost, and it stops identical copies piling up in the save history.
+      try{ if((key in cloudDataCache) && JSON.stringify(oldVal)===JSON.stringify(parsed)) return {ok:true, unchanged:true}; }catch(e){}
       cloudDataCache[key]=parsed;
       const rpcArgs = { p_key:key, p_value:parsed };
       // Admin "view as customer" writes to the customer's row, not the
@@ -2119,7 +2123,7 @@ let rabbits = [], planned = [], customEvents = [], shows = [], expenses = [], cu
 let profileRabbitId = null, profileTab = 'overview', photoActiveCategory = 'Primary';
 let expandedLitters = new Set();
 let calWeekStart = null, calSelectedDate = null;
-let searchMode = 'herd';   // 'herd' or 'relatives': what the one search bar looks for
+let searchMode = 'herd';   // 'herd' (rabbits in your herd), 'anc' (ancestors of your herd), 'all' (everyone ever entered)
 
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function addDays(d,n){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
@@ -2267,6 +2271,25 @@ async function loadData(){
   let savedTheme=null; try{ savedTheme=(await window.storage.get(THEME_KEY,false)).value; }catch(e){ savedTheme=lookCopyGet('theme'); }
   if(savedTheme==='dark') document.documentElement.setAttribute('data-theme','dark'); else document.documentElement.removeAttribute('data-theme');
   let savedPalette=null; try{ savedPalette=(await window.storage.get(PALETTE_KEY,false)).value; }catch(e){ savedPalette=lookCopyGet('palette'); }
+  // Ribbon is the new standard look. Once per account (flag look_default_v1) the account is moved to it;
+  // the colors it had before are kept in palette_prev_v1 so nothing is lost and it can be switched back in Colors.
+  // An admin viewing a customer sees Ribbon but nothing is written to that customer's account.
+  { let flagSeen=false, flagMissing=false;
+    try{ await window.storage.get('look_default_v1',false); flagSeen=true; }catch(e){ flagMissing = !!(e && e.message==='not found'); }
+    if(!flagSeen && flagMissing && cloudDataReady){
+      const prev=savedPalette;
+      if(viewingAsCustomer){ savedPalette='ribbon'; }
+      else {
+        try{
+          if(prev && prev!=='ribbon') await window.storage.set('palette_prev_v1', prev, false);
+          await window.storage.set(PALETTE_KEY, 'ribbon', false);
+          await window.storage.set('look_default_v1', '1', false);
+          lookCopySet('palette','ribbon'); savedPalette='ribbon';
+        }catch(e){ console.warn('Could not switch to the new look yet', e); }
+      }
+    }
+  }
+  { let cv=null; try{ cv=(await window.storage.get(CUSTOM_PALETTE_KEY,false)).value; }catch(e){ cv=lookCopyGet('palette_custom'); } const cp=parseCustomPal(cv); if(cp) customPal=cp; }
   applyPalette(savedPalette);
   render();
   // In the background (so the app opens right away): shrink any saved photos
@@ -2578,7 +2601,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-19-kindtab';
+const APP_VERSION = '2026-10-19-pedpreviewclean';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3481,8 +3504,43 @@ const PALETTES = [
    dark:{'--page':'#17101A','--cream':'#17101A','--card':'#231A27','--ivory':'#231A27','--ink':'#F3EAF4','--ink-soft':'#C9B8CD',
      '--line':'#33263A','--line-strong':'#4A3A52','--navbar':'#2A1A2E','--gold':'#FF7A63','--gold-deep':'#FF7A63',
      '--rb-coral':'#FF7A63','--rb-coral-ink':'#2A0F0A','--rb-text':'#FF8C78','--rb-outline':'#D8C6F5','--rb-hero-bg':'linear-gradient(180deg,#2A1A2E,#17101A)','--rb-hero-ink':'#ffffff','--rb-hero-dim':'#B7A3BC',
-     '--rb-track':'#3B2C42','--rb-nav':'#2E2133','--rb-nav-on':'#F3EAF4','--rb-nav-on-ink':'#2A1A2E','--rb-shadow':'rgba(0,0,0,.45)'}}
+     '--rb-track':'#3B2C42','--rb-nav':'#2E2133','--rb-nav-on':'#F3EAF4','--rb-nav-on-ink':'#2A1A2E','--rb-shadow':'rgba(0,0,0,.45)'}},
+  /* Ribbon-layout presets: only two colors are given; ribbonGen() works out every other shade (light and dark) */
+  {id:'rb-midnight', name:'Midnight & marigold', main:'#1B1F3B', accent:'#F5A524', look:true, gen:true},
+  {id:'rb-peacock',  name:'Peacock & apricot',   main:'#0B4F6C', accent:'#FF9F6E', look:true, gen:true},
+  {id:'rb-raspberry',name:'Raspberry & cream',   main:'#8A1C4A', accent:'#FF7B9C', look:true, gen:true},
+  {id:'rb-moss',     name:'Moss & rose',         main:'#33472E', accent:'#E07A8F', look:true, gen:true},
+  {id:'rb-eggplant', name:'Eggplant & lime',     main:'#3B1E54', accent:'#A8D93A', look:true, gen:true}
 ];
+/* "Make your own": two colors the account picks, saved in palette_custom_v1 as "#main,#accent" */
+const CUSTOM_PALETTE_KEY = 'palette_custom_v1';
+let customPal = {main:'#3F1B42', accent:'#E0533D'};
+function validHex(h){ return typeof h==='string' && /^#[0-9a-fA-F]{6}$/.test(h); }
+function parseCustomPal(v){ try{ const a=String(v||'').split(','); if(validHex(a[0])&&validHex(a[1])) return {main:a[0].toLowerCase(), accent:a[1].toLowerCase()}; }catch(e){} return null; }
+function customPalObj(){ return {id:'custom', name:'Your own colors', main:customPal.main, accent:customPal.accent, look:true, gen:true}; }
+function ribbonGen(main0, accent0){
+  const W='#ffffff', K='#000000';
+  const L=paletteLum, C=paletteContrast;
+  const inkOn=h=> C(h,'#1a0f0a')>C(h,W)?'#1a0f0a':W;
+  const hexA=(h,a)=>'rgba('+[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)).join(',')+','+a+')';
+  // ---- light ----
+  const page=paletteMix(accent0,W,0.94);
+  let main=main0; for(let i=0;i<14 && C(main,W)<7;i++) main=paletteMix(main,K,0.08);   // white text on it must be easy to read
+  let accText=accent0; for(let i=0;i<14 && C(accText,W)<4.6;i++) accText=paletteMix(accText,K,0.1);
+  const light={'--page':page,'--cream':page,'--card':W,'--ivory':W,'--ink':paletteMix(main,K,0.55),'--ink-soft':paletteMix(main,K,0.2),
+    '--line':paletteMix(accent0,W,0.8),'--line-strong':paletteMix(main,W,0.78),'--navy':main,'--navy-deep':paletteMix(main,K,0.35),'--navbar':main,'--gold':accent0,'--gold-deep':accText,
+    '--rb-coral':accent0,'--rb-coral-ink':inkOn(accent0),'--rb-text':accText,'--rb-outline':main,'--rb-hero-bg':main,'--rb-hero-ink':W,'--rb-hero-dim':paletteMix(main,W,0.78),
+    '--rb-track':paletteMix(accent0,W,0.85),'--rb-nav':main,'--rb-nav-on':W,'--rb-nav-on-ink':main,'--rb-shadow':hexA(main,0.12)};
+  // ---- dark ----
+  const dpage=paletteMix(main0,K,0.72), dcard=paletteMix(dpage,W,0.09);
+  let acc=accent0; for(let i=0;i<14 && C(acc,dcard)<4.6;i++) acc=paletteMix(acc,W,0.12);
+  const dnav=paletteMix(main0,K,0.5), dhero=paletteMix(main0,K,0.45);
+  const dark={'--page':dpage,'--cream':dpage,'--card':dcard,'--ivory':dcard,'--ink':'#F3EAF4','--ink-soft':'#C9B8CD',
+    '--line':paletteMix(dpage,W,0.14),'--line-strong':paletteMix(dpage,W,0.26),'--navbar':dnav,'--gold':acc,'--gold-deep':acc,
+    '--rb-coral':acc,'--rb-coral-ink':inkOn(acc),'--rb-text':acc,'--rb-outline':paletteMix(main0,W,0.9),'--rb-hero-bg':'linear-gradient(180deg,'+dhero+','+dpage+')','--rb-hero-ink':W,'--rb-hero-dim':paletteMix(main0,W,0.6),
+    '--rb-track':paletteMix(dpage,W,0.2),'--rb-nav':dnav,'--rb-nav-on':paletteMix(main0,W,0.9),'--rb-nav-on-ink':dnav,'--rb-shadow':'rgba(0,0,0,.45)'};
+  return {light,dark};
+}
 let currentPaletteId = 'heritage';
 function paletteMix(a,b,t){
   const p=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
@@ -3534,12 +3592,13 @@ function paletteCss(p){
     '--gold':paletteMix(p.accent,K,0.25), '--gold-light':accentLight, '--gold-deep':p.accent,
     '--navbar':paletteMix(p.main,K,0.75), '--navbar-dim':paletteMix(p.main,W,0.5), '--viewer':paletteMix(p.main,K,0.85)
   };
+  if(p.gen){ const g=ribbonGen(p.main,p.accent); Object.assign(light,g.light); Object.assign(dark,g.dark); }
   Object.assign(light, p.light||{}); Object.assign(dark, p.dark||{});
   const decl=o=>Object.keys(o).map(k=>k+':'+o[k]+';').join('');
   return ':root:not([data-theme="dark"]){'+decl(light)+'}\n[data-theme="dark"]{'+decl(dark)+'}';
 }
 function applyPalette(id){
-  const p = PALETTES.find(x=>x.id===id) || PALETTES[0];
+  const p = (id==='custom') ? customPalObj() : (PALETTES.find(x=>x.id===id) || PALETTES[0]);
   currentPaletteId = p.id;
   document.body.classList.toggle('look-ribbon', !!p.look);
   { const ab=document.getElementById('addRabbitTopBtn'); if(ab){ ab.setAttribute('aria-label', p.look?'Add':'Add a rabbit'); ab.title = p.look?'Add':'Add a rabbit'; } }
@@ -3560,21 +3619,44 @@ function openPaletteSheet(){
     <h2>Colors</h2>
     <div class="card-sub" style="margin-bottom:12px;">${locked ? 'You are viewing a customer&rsquo;s account, so their colors can&rsquo;t be changed from here.' : 'Pick a color style for your account. It only changes how <em>your</em> HerdNerd Pro looks. Every style has a dark version too &mdash; use the moon button at the top to switch.'}</div>
     <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;">
-      ${PALETTES.map(p=>`<button type="button" class="pal-opt${p.id===currentPaletteId?' on':''}" data-pal="${p.id}" ${locked?'disabled':''}>
+      ${PALETTES.concat([customPalObj()]).map(p=>`<button type="button" class="pal-opt${p.id===currentPaletteId?' on':''}" data-pal="${p.id}" ${locked?'disabled':''}>
         <span class="pal-sw"><span style="background:${p.main};"></span><span style="background:${p.accent};"></span></span>
         <span class="pal-name">${esc(p.name)}</span>
         <span class="pal-check" aria-hidden="true">${p.id===currentPaletteId?'&#10003;':''}</span>
       </button>`).join('')}
-    </div>`);
+    </div>
+    <div class="section-label" style="margin-top:16px;">MAKE YOUR OWN</div>
+    <div class="card-sub" style="margin-bottom:8px;">Pick a main color (header and menu) and an accent color (buttons). Light and dark mode are worked out for you, and text is kept readable.</div>
+    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+      <label style="display:flex; align-items:center; gap:8px; font-weight:700;">Main <input type="color" id="cp-main" value="${customPal.main}" ${locked?'disabled':''} style="width:56px;height:44px;padding:0;border:none;background:none;"></label>
+      <label style="display:flex; align-items:center; gap:8px; font-weight:700;">Accent <input type="color" id="cp-acc" value="${customPal.accent}" ${locked?'disabled':''} style="width:56px;height:44px;padding:0;border:none;background:none;"></label>
+      <button type="button" class="btn btn-primary" id="cp-save" ${locked?'disabled':''}>Save my colors</button>
+    </div>
+    <div class="card-sub" id="cp-note" style="margin-top:6px;">You see a preview as you pick. Nothing is saved until you tap Save.</div>`);
+  const cpM=document.getElementById('cp-main'), cpA=document.getElementById('cp-acc');
+  if(cpM && cpA && !locked){
+    const orig=currentPaletteId;
+    const prev=()=>{ if(validHex(cpM.value)&&validHex(cpA.value)){ window._palRevert=()=>applyPalette(orig); const keep=customPal; customPal={main:cpM.value.toLowerCase(), accent:cpA.value.toLowerCase()}; applyPalette('custom'); customPal=keep; } };
+    cpM.oninput=prev; cpA.oninput=prev;
+    document.getElementById('cp-save').onclick=async ()=>{
+      if(!validHex(cpM.value)||!validHex(cpA.value)) return;
+      customPal={main:cpM.value.toLowerCase(), accent:cpA.value.toLowerCase()};
+      const val=customPal.main+','+customPal.accent;
+      window._palRevert=null; applyPalette('custom'); lookCopySet('palette','custom'); lookCopySet('palette_custom',val);
+      try{ await window.storage.set(CUSTOM_PALETTE_KEY, val, false); await window.storage.set(PALETTE_KEY, 'custom', false); }catch(e){ showToast('Could not save your colors — check your connection'); return; }
+      document.querySelectorAll('.pal-opt').forEach(x=>{ const on=x.dataset.pal==='custom'; x.classList.toggle('on',on); x.querySelector('.pal-check').innerHTML=on?'&#10003;':''; const sw=x.querySelectorAll('.pal-sw span'); if(on&&sw.length==2){ sw[0].style.background=customPal.main; sw[1].style.background=customPal.accent; } });
+      showToast('Your colors are saved');
+    };
+  }
   document.querySelectorAll('[data-pal]').forEach(b=>b.onclick=async ()=>{
     if(viewingAsCustomer) return;
-    const id=b.dataset.pal;
+    const id=b.dataset.pal; window._palRevert=null;
     applyPalette(id); lookCopySet('palette',id);
     try{ await window.storage.set(PALETTE_KEY, id, false); }catch(e){ showToast('Could not save your colors — check your connection'); return; }
     // Read it back from your account to be sure it really reached the online copy.
     try{ if(typeof sb!=='undefined' && sb && currentUser && !localSandboxMode){ const {data:chk}=await sb.from('barn_data').select('data').eq('user_id',currentUser.id).maybeSingle(); if(chk && chk.data && chk.data[PALETTE_KEY]!==id){ showToast('Your colors are saved on this device only — they did not reach your online account. Tell Claude.'); } } }catch(e){}
     document.querySelectorAll('.pal-opt').forEach(x=>{ const on=x.dataset.pal===id; x.classList.toggle('on',on); x.querySelector('.pal-check').innerHTML=on?'&#10003;':''; });
-    showToast((PALETTES.find(x=>x.id===id)||{}).name+' colors on');
+    showToast((id==='custom'?'Your own':(PALETTES.find(x=>x.id===id)||{}).name)+' colors on');
   });
 }
 
@@ -4689,7 +4771,6 @@ function renderMain(){
   const gridTabs = ['rabbits','litters','planned','ancestors','archive','forsale'];
   main.classList.toggle('card-grid', !!searchQuery.trim() || gridTabs.includes(currentTab));
   main.classList.toggle('rb-home', (currentTab==='home'||currentTab==='money') && !searchQuery.trim());
-  if(searchMode==='relatives'){ renderRelativesSearch(main); return; }
   if(searchQuery.trim()){ renderSearch(main); return; }
   if(currentTab==='home'){ renderHome(main); }
   else if(currentTab==='rabbits'){ renderRabbits(main); }
@@ -5411,22 +5492,54 @@ function setSearchMode(m){
 }
 document.querySelectorAll('#searchModeSeg button').forEach(b=>b.onclick=()=>setSearchMode(b.dataset.smode));
 document.getElementById('addRabbitTopBtn').onclick=()=>{ if(lookRibbonOn()) openAddMenu(); else openAddSheet(); };
-function renderSearch(main){
-  const q=nameKey(searchQuery);
-  const scored = rabbits.map(r=>{
+// Search looks in three places, all inside THIS account only:
+//  herd  = rabbits in your herd right now
+//  anc   = pedigree-only and past rabbits that sit in the pedigree of someone in your herd
+//  all   = every record you have ever entered (herd, sold/deceased/retired, and every pedigree-only ancestor)
+function searchPool(mode){
+  if(mode==='all') return rabbits;
+  if(mode==='anc'){
+    const idx=relBuildIndex(), keys=new Set();
+    rabbits.filter(isActive).forEach(h=>{ relAncestors(h.name, idx, 8).forEach((v,k)=>keys.add(k)); });
+    return rabbits.filter(r=>!isActive(r) && keys.has(relKey(r.name)));
+  }
+  return rabbits.filter(isActive);
+}
+function scoreSearch(pool,q){
+  return pool.map(r=>{
     const n=nameKey(r.name);
     let s=99;
     if(n===q) s=0; else if(n.startsWith(q)) s=1; else if(n.includes(q)) s=2;
+    else if(r.alias && nameKey(r.alias).includes(q)) s=2.2;
     else if(r.earNumber && r.earNumber.toLowerCase()===q) s=1;
     else if(r.earNumber && r.earNumber.toLowerCase().includes(q)) s=2.5;
     else if(r.color && r.color.toLowerCase().includes(q)) s=4;
     else if(r.breed && r.breed.toLowerCase().includes(q)) s=4.5;
     else { const d=levenshtein(n,q); if(d<=3) s=3+d; }
     return {r,s};
-  }).filter(x=>x.s<99).sort((a,b)=>a.s-b.s||a.r.name.localeCompare(b.r.name)).slice(0,25);
-  if(!scored.length){ main.innerHTML=`<div class="empty">No rabbit matches "${esc(searchQuery)}".</div>`; return; }
-  main.innerHTML=`<div class="section-label">${scored.length} MATCH${scored.length===1?'':'ES'}</div>`+scored.map(({r})=>
-    `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${statusBadge(r)}</div></div>`).join('');
+  }).filter(x=>x.s<99).sort((a,b)=>a.s-b.s||a.r.name.localeCompare(b.r.name));
+}
+function renderSearch(main){
+  const q=nameKey(searchQuery);
+  const counts={herd:scoreSearch(searchPool('herd'),q).length, anc:scoreSearch(searchPool('anc'),q).length, all:scoreSearch(searchPool('all'),q).length};
+  const scored=scoreSearch(searchPool(searchMode),q).slice(0,25);
+  const chip=(m,l)=>`<button type="button" class="btn ${searchMode===m?'btn-primary':'btn-secondary'} btn-sm" data-smode2="${m}">${l} &middot; ${counts[m]}</button>`;
+  const bar=`<div class="search-scope" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${chip('herd','My herd')}${chip('anc','Ancestors of my herd')}${chip('all','Everyone I’ve entered')}</div>`;
+  const where={herd:'in your herd',anc:'in the pedigrees of your herd',all:'in everything you’ve entered'}[searchMode];
+  let body;
+  if(!scored.length){
+    const other=['herd','anc','all'].filter(m=>m!==searchMode&&counts[m]>0);
+    body=`<div class="empty" style="grid-column:1/-1;">No rabbit matches "${esc(searchQuery)}" ${where}.${other.length?' Try another list above — it has matches.':''}</div>`;
+  } else {
+    body=`<div class="section-label" style="grid-column:1/-1;">${scored.length} MATCH${scored.length===1?'':'ES'} ${where.toUpperCase()}</div>`+scored.map(({r})=>{
+      const ext=r.status==='external';
+      const badge=ext?'<span class="badge b-gone">ANCESTOR</span>':statusBadge(r);
+      return `<div class="card" ${ext?'':`data-openprofile="${r.id}"`}><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${badge}</div>
+        <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext?'Open / edit':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`;
+    }).join('');
+  }
+  main.innerHTML=bar+body;
+  main.querySelectorAll('[data-smode2]').forEach(b=>b.onclick=()=>{ searchMode=b.dataset.smode2; renderMain(); });
   attachCardEvents();
 }
 document.getElementById('searchInput').addEventListener('input', e=>{
@@ -5582,7 +5695,7 @@ function attachCardEvents(){
 }
 
 function openSheet(html){ document.getElementById('sheet').innerHTML=html; document.getElementById('sheetBackdrop').classList.add('on'); document.getElementById('sheet').scrollTop=0; }
-function closeSheet(){ document.getElementById('sheetBackdrop').classList.remove('on'); document.body.classList.remove('ped-dock'); document.querySelectorAll('.ped-box.sel').forEach(x=>x.classList.remove('sel')); document.querySelectorAll('.ped-tree.has-sel').forEach(x=>x.classList.remove('has-sel')); }
+function closeSheet(){ if(window._palRevert){ const f=window._palRevert; window._palRevert=null; try{ f(); }catch(e){} } document.getElementById('sheetBackdrop').classList.remove('on'); document.body.classList.remove('ped-dock'); document.querySelectorAll('.ped-box.sel').forEach(x=>x.classList.remove('sel')); document.querySelectorAll('.ped-tree.has-sel').forEach(x=>x.classList.remove('has-sel')); }
 document.getElementById('sheetBackdrop').addEventListener('click',e=>{ if(e.target.id==='sheetBackdrop') closeSheet(); });
 function done(origin){ closeSheet(); if(typeof origin==='function'){ origin(); } render(); if(profileRabbitId) renderProfile(); }
 
@@ -7433,27 +7546,14 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
         <canvas id="ped-preview-canvas" style="width:100%; height:320px; display:block; background:#fff;"></canvas>
       </div>
       <div id="ped-preview-status" class="card-sub" style="margin-bottom:12px; min-height:16px;">Loading preview&hellip;</div>
+      <div class="card-sub" style="margin:-6px 0 12px;">Logo and fonts are under More &rarr; Pedigree settings.</div>
       ${hasCustomBackground?`<div class="field"><label>Background</label>
         <div class="seg" id="pp-bg-choice">
           <button type="button" data-v="custom" class="${useBackgroundDraft?'on':''}">Use custom background</button>
           <button type="button" data-v="plain" class="${useBackgroundDraft?'':'on'}">Plain white</button>
         </div>
       </div>`:''}
-      <div class="field"><label>Logo</label>
-        <div style="display:flex; align-items:center; gap:10px;">
-          ${draft.logoDataUrl?`<img src="${draft.logoDataUrl}" style="width:40px; height:40px; object-fit:contain; border:1px solid var(--line-strong); border-radius:8px;">`:''}
-          <button type="button" class="btn btn-secondary btn-sm" id="pp-logo-btn">${draft.logoDataUrl?'Replace logo':'Upload logo'}</button>
-          ${draft.logoDataUrl?'<button type="button" class="btn btn-secondary btn-sm" id="pp-logo-remove">Remove</button>':''}
-        </div>
-        <input type="file" id="pp-logo-file" accept="image/*" style="display:none;">
-      </div>
       <div class="field"><label>Tagline (optional)</label><input id="pp-tagline" value="${esc(draft.tagline||'')}"></div>
-      <div class="field"><label>"Pedigree" title font</label>
-        ${fontSegHTML('pp-titlefont', draft.titleFont, 'libre')}
-      </div>
-      <div class="field"><label>Rabbitry name font</label>
-        ${fontSegHTML('pp-namefont', draft.nameFont, 'libre')}
-      </div>
       <div class="field"><label>Instagram / Facebook</label><input id="pp-social" value="${esc(draft.social||'')}"></div>
       <div class="field"><label>Print colors</label><div class="seg" id="pp-theme">${themeButtonsHTML()}</div></div>
       <div class="field" id="pp-customwrap" style="${draft.printTheme==='custom'?'':'display:none;'}"><label>Custom accent color</label><input type="color" id="pp-customcolor" value="${esc(draft.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
@@ -7466,8 +7566,6 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       <label style="display:flex; align-items:center; gap:8px; padding:10px 0 4px; font-size:13px;"><input type="checkbox" id="pp-watermark" ${draft.watermarkEnabled?'checked':''} style="width:18px; height:18px;"> Show diagonal watermark</label>
       <div class="field" id="pp-watermarkwrap" style="${draft.watermarkEnabled?'':'display:none;'}">
         <label>Watermark text</label><input id="pp-watermarktext" value="${esc(draft.watermarkText||'')}" placeholder="Defaults to your rabbitry name">
-        <label style="margin-top:8px;">Watermark font</label>
-        ${fontSegHTML('pp-watermarkfont', draft.watermarkFont, 'libre')}
       </div>
       ${(hasCustomBackground && useBackgroundDraft)?`<div class="field"><label>Footer layout</label>
         <div class="seg" id="pp-footerstyle">
@@ -7488,11 +7586,8 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     draft.hasCertification = document.getElementById('pp-cert').checked;
     draft.watermarkEnabled = document.getElementById('pp-watermark').checked;
     draft.watermarkText = document.getElementById('pp-watermarktext').value.trim();
-    draft.watermarkFont = document.getElementById('pp-watermarkfont').value;
     const footerStyleBtn = document.querySelector('#pp-footerstyle button.on');
     if(footerStyleBtn) draft.footerStyle = footerStyleBtn.dataset.v;
-    draft.titleFont = document.getElementById('pp-titlefont').value;
-    draft.nameFont = document.getElementById('pp-namefont').value;
     draft.fields = {
       dob: document.getElementById('pp-field-dob').checked,
       reg: document.getElementById('pp-field-reg').checked,
@@ -7533,16 +7628,6 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       useBackgroundDraft = b.dataset.v==='custom';
       renderSheet();
     });
-    document.getElementById('pp-logo-btn').onclick = ()=> document.getElementById('pp-logo-file').click();
-    document.getElementById('pp-logo-file').onchange = ()=>{
-      const file = document.getElementById('pp-logo-file').files[0];
-      if(!file) return;
-      const reader = new FileReader();
-      reader.onload = ()=>{ draft.logoDataUrl = reader.result; renderSheet(); };
-      reader.readAsDataURL(file);
-    };
-    const rmBtn = document.getElementById('pp-logo-remove');
-    if(rmBtn) rmBtn.onclick = ()=>{ draft.logoDataUrl=null; renderSheet(); };
 
     document.querySelectorAll('#pp-theme button').forEach(b=>b.onclick=()=>{
       document.querySelectorAll('#pp-theme button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
@@ -7563,10 +7648,6 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
     if(ppFooterStyleSeg) ppFooterStyleSeg.querySelectorAll('button').forEach(b=>b.onclick=()=>{
       ppFooterStyleSeg.querySelectorAll('button').forEach(x=>x.classList.remove('on')); b.classList.add('on');
       readDraftFromControls(); scheduleRegen(true);
-    });
-    ['pp-titlefont','pp-namefont','pp-watermarkfont'].forEach(selId=>{
-      const el = document.getElementById(selId);
-      if(el) el.onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
     });
     fieldRows.forEach(([k])=>{
       document.getElementById('pp-field-'+k).onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
