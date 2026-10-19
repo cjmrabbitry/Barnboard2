@@ -1,0 +1,14 @@
+{
+  "name": "HerdNerd Pro",
+  "short_name": "HerdNerd",
+  "description": "Rabbitry management, wherever you are.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#142440",
+  "theme_color": "#142440",
+  "icons": [
+    { "src": "android-chrome-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "android-chrome-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
