@@ -2301,6 +2301,7 @@ async function loadData(){
       }
     } }
   applyPalette(savedPalette);
+  lookCopySet('palette', currentPaletteId); lookCopySet('palette_custom', customPal.main+','+customPal.accent); lookCopySet('theme', savedTheme==='dark'?'dark':'light');
   render();
   // In the background (so the app opens right away): shrink any saved photos
   // over the size budget, then move photos into their own records.
@@ -2611,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-nolegacy';
+const APP_VERSION = '2026-10-20-earlylook';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -2754,7 +2755,7 @@ function wireProjects(main, shown){
   const m=document.getElementById('pj-manage-top'); if(m) m.onclick=()=>openProjectsManage();
   document.querySelectorAll('[data-pjf]').forEach(b=>b.onclick=()=>{ projectFilter=b.dataset.pjf; selectedIds=new Set(); render(); });
   const sel=document.getElementById('pj-select'); if(sel) sel.onclick=()=>{ selectMode=true; selectedIds=new Set(); render(); };
-  const can=document.getElementById('pj-cancel-sel'); if(can) can.onclick=()=>{ selectMode=false; selectedIds=new Set(); render(); };
+  ['pj-cancel-sel','pj-cancel-sel2'].forEach(id=>{ const can=document.getElementById(id); if(can) can.onclick=(e)=>{ if(e) e.preventDefault(); selectMode=false; selectedIds=new Set(); render(); window.scrollTo(0,0); }; });
   const all=document.getElementById('pj-selall'); if(all) all.onclick=()=>{ shown.forEach(r=>selectedIds.add(r.id)); render(); };
   document.querySelectorAll('[data-pjsel]').forEach(el=>el.onclick=()=>{ const id=el.dataset.pjsel; if(selectedIds.has(id)) selectedIds.delete(id); else selectedIds.add(id); render(); });
   document.querySelectorAll('[data-pjbulk]').forEach(b=>b.onclick=()=>{
@@ -2772,7 +2773,8 @@ function selectBarHTML(){
   const n=selectedIds.size, pid = (projectFilter!=='all'?projectFilter:(window.__pjTarget&&projects.find(p=>p.id===window.__pjTarget)?window.__pjTarget:''));
   const nm=(projects.find(p=>p.id===pid)||{}).name;
   return `<div class="pj-selbar"><div class="lit-label">Add to project</div><div class="pj-pick">${projects.map(p=>`<button class="pj-opt ${p.id===pid?'on':''}" data-pjtarget="${p.id}">${esc(p.name)}</button>`).join('')}</div>
-    <div style="display:flex;gap:8px;"><button class="btn btn-primary" style="flex:1" ${n&&pid?'':'disabled'} data-pjbulk="${pid}" data-pjmode="add">${pid?`Add ${n} to ${esc(nm)}`:'Pick a project'}</button><button class="btn btn-secondary" ${n&&pid?'':'disabled'} data-pjbulk="${pid}" data-pjmode="remove">Remove</button></div></div>`;
+    <div style="display:flex;gap:8px;"><button class="btn btn-primary" style="flex:1" ${n&&pid?'':'disabled'} data-pjbulk="${pid}" data-pjmode="add">${pid?`Add ${n} to ${esc(nm)}`:'Pick a project'}</button><button class="btn btn-secondary" ${n&&pid?'':'disabled'} data-pjbulk="${pid}" data-pjmode="remove">Remove</button></div>
+    <button class="btn btn-secondary" style="width:100%;" id="pj-cancel-sel2">Cancel &mdash; leave without changing anything</button></div>`;
 }
 document.addEventListener('click',(ev)=>{ const b=ev.target.closest&&ev.target.closest('[data-pjtag]'); if(b){ ev.stopPropagation(); openProjectTagSheet(b.dataset.pjtag); } });
 // ===== PROJECTS END =====
@@ -3516,6 +3518,7 @@ const PALETTES = [
      '--rb-coral':'#FF7A63','--rb-coral-ink':'#2A0F0A','--rb-text':'#FF8C78','--rb-outline':'#D8C6F5','--rb-hero-bg':'linear-gradient(180deg,#2A1A2E,#17101A)','--rb-hero-ink':'#ffffff','--rb-hero-dim':'#B7A3BC',
      '--rb-track':'#3B2C42','--rb-nav':'#2E2133','--rb-nav-on':'#F3EAF4','--rb-nav-on-ink':'#2A1A2E','--rb-shadow':'rgba(0,0,0,.45)'}},
   /* Ribbon-layout presets: only two colors are given; ribbonGen() works out every other shade (light and dark) */
+  {id:'rb-heritage', name:'Navy & gold (original colors)', main:'#142440', accent:'#c6a15b', look:true, gen:true},
   {id:'rb-midnight', name:'Midnight & marigold', main:'#1B1F3B', accent:'#F5A524', look:true, gen:true},
   {id:'rb-peacock',  name:'Peacock & apricot',   main:'#0B4F6C', accent:'#FF9F6E', look:true, gen:true},
   {id:'rb-raspberry',name:'Raspberry & cream',   main:'#8A1C4A', accent:'#FF7B9C', look:true, gen:true},
@@ -3623,6 +3626,23 @@ function applyPalette(id){
   el.textContent = paletteCss(p);
   if(meta) meta.setAttribute('content', p.main);
 }
+/* First paint: show the Ribbon layout straight away (in the original navy and gold) instead of the old layout, and, if this
+   device remembers who last signed in, use THAT account's own saved colors and light/dark setting. The remembered copy is
+   stored per account id, so one account's colors can never be picked up for another account. Once the account's data loads,
+   its saved choice is applied exactly as before. */
+(function earlyLook(){
+  try{
+    let uid=null;
+    for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i);
+      if(/^sb-.+-auth-token$/.test(k)){ try{ const j=JSON.parse(localStorage.getItem(k)); uid=(j&&j.user&&j.user.id)||(j&&j.currentSession&&j.currentSession.user&&j.currentSession.user.id)||null; }catch(e){} } }
+    const get=w=>{ try{ return uid?localStorage.getItem('herdnerd_look_'+w+'_'+uid):null; }catch(e){ return null; } };
+    const th=get('theme'); if(th==='dark') document.documentElement.setAttribute('data-theme','dark');
+    const cp=parseCustomPal(get('palette_custom')); if(cp) customPal=cp;
+    const pal=get('palette');
+    const okIds=PALETTES.filter(x=>x.look).map(x=>x.id).concat(['custom']);
+    applyPalette(okIds.includes(pal)?pal:'rb-heritage');
+  }catch(e){ try{ applyPalette('rb-heritage'); }catch(e2){} }
+})();
 function openPaletteSheet(){
   const locked = !!viewingAsCustomer;
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
@@ -5347,8 +5367,8 @@ function renderRabbits(main){
        </div>`
     : '';
   if(projectFilter!=='all' && !projects.some(p=>p.id===projectFilter)) projectFilter='all';
-  const pjSummary = (projects.length && (shownList.length||projectFilter!=='all'||traitFilter)) ? `<div class="pj-summary"><span style="font-weight:600">${selectMode?(projectFilter==='all'?'Tap the rabbits to include':'Tap rabbits to add to '+esc((projects.find(p=>p.id===projectFilter)||{}).name||'')):projectFilter==='all'?'':`${shownList.length} in ${esc((projects.find(p=>p.id===projectFilter)||{}).name||'')}`}</span>${selectMode?`<span><a id="pj-selall">Select all</a> &nbsp; <a id="pj-cancel-sel">Cancel</a></span>`:`<button type="button" class="btn btn-secondary btn-sm" id="pj-select">${projectFilter==='all'?'Add several rabbits to a project':'+ Add rabbits to '+esc((projects.find(p=>p.id===projectFilter)||{}).name||'this project')}</button>`}</div>` : '';
-  main.innerHTML = groupTabs + (selectMode?'':quickPickBar()) + projectBar(scopeList) + (selectMode?'':traitBar(scopeList)) + pjSummary + (selectMode?'':actionRow) + body + (selectMode?selectBarHTML()+'<div style="height:170px"></div>':'');
+  const pjSummary = (projects.length && (shownList.length||projectFilter!=='all'||traitFilter)) ? `<div class="pj-summary"><span style="font-weight:600">${selectMode?(projectFilter==='all'?'Tap the rabbits to include':'Tap rabbits to add to '+esc((projects.find(p=>p.id===projectFilter)||{}).name||'')):projectFilter==='all'?'':`${shownList.length} in ${esc((projects.find(p=>p.id===projectFilter)||{}).name||'')}`}</span>${selectMode?`<span><a id="pj-selall">Select all</a> &nbsp; <a id="pj-cancel-sel" href="#" style="font-weight:800;">Cancel</a></span>`:`<button type="button" class="btn btn-secondary btn-sm" id="pj-select">${projectFilter==='all'?'Add several rabbits to a project':'+ Add rabbits to '+esc((projects.find(p=>p.id===projectFilter)||{}).name||'this project')}</button>`}</div>` : '';
+  main.innerHTML = groupTabs + (selectMode?'':quickPickBar()) + projectBar(scopeList) + (selectMode?'':traitBar(scopeList)) + pjSummary + (selectMode?'':actionRow) + body + (selectMode?selectBarHTML()+'<div style="height:230px"></div>':'');
   wireProjects(main, shownList); wireTraits(); wireQuickPicks();
   document.querySelectorAll('[data-pjtarget]').forEach(b=>b.onclick=()=>{ window.__pjTarget=b.dataset.pjtarget; render(); });
   if(document.getElementById('herdRecordBreedingBtn')) document.getElementById('herdRecordBreedingBtn').onclick = openQuickBreedSheet;
