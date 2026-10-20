@@ -2290,6 +2290,13 @@ async function loadData(){
     }
   }
   { let cv=null; try{ cv=(await window.storage.get(CUSTOM_PALETTE_KEY,false)).value; }catch(e){ cv=lookCopyGet('palette_custom'); } const cp=parseCustomPal(cv); if(cp) customPal=cp; }
+  { const okIds=PALETTES.filter(x=>x.look).map(x=>x.id).concat(['custom']);
+    if(!okIds.includes(savedPalette)){
+      const prev=savedPalette; savedPalette='ribbon';
+      if(!viewingAsCustomer && cloudDataReady){
+        try{ if(prev) await window.storage.set('palette_prev_v1', prev, false); await window.storage.set(PALETTE_KEY,'ribbon',false); lookCopySet('palette','ribbon'); }catch(e){ console.warn('Could not save the new look yet', e); }
+      }
+    } }
   applyPalette(savedPalette);
   render();
   // In the background (so the app opens right away): shrink any saved photos
@@ -2601,7 +2608,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-19-pedpreviewclean';
+const APP_VERSION = '2026-10-19-pednote';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3598,7 +3605,7 @@ function paletteCss(p){
   return ':root:not([data-theme="dark"]){'+decl(light)+'}\n[data-theme="dark"]{'+decl(dark)+'}';
 }
 function applyPalette(id){
-  const p = (id==='custom') ? customPalObj() : (PALETTES.find(x=>x.id===id) || PALETTES[0]);
+  const p = (id==='custom') ? customPalObj() : (PALETTES.find(x=>x.id===id && x.look) || PALETTES.find(x=>x.id==='ribbon'));
   currentPaletteId = p.id;
   document.body.classList.toggle('look-ribbon', !!p.look);
   { const ab=document.getElementById('addRabbitTopBtn'); if(ab){ ab.setAttribute('aria-label', p.look?'Add':'Add a rabbit'); ab.title = p.look?'Add':'Add a rabbit'; } }
@@ -3619,7 +3626,7 @@ function openPaletteSheet(){
     <h2>Colors</h2>
     <div class="card-sub" style="margin-bottom:12px;">${locked ? 'You are viewing a customer&rsquo;s account, so their colors can&rsquo;t be changed from here.' : 'Pick a color style for your account. It only changes how <em>your</em> HerdNerd Pro looks. Every style has a dark version too &mdash; use the moon button at the top to switch.'}</div>
     <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;">
-      ${PALETTES.concat([customPalObj()]).map(p=>`<button type="button" class="pal-opt${p.id===currentPaletteId?' on':''}" data-pal="${p.id}" ${locked?'disabled':''}>
+      ${PALETTES.filter(p=>p.look).concat([customPalObj()]).map(p=>`<button type="button" class="pal-opt${p.id===currentPaletteId?' on':''}" data-pal="${p.id}" ${locked?'disabled':''}>
         <span class="pal-sw"><span style="background:${p.main};"></span><span style="background:${p.accent};"></span></span>
         <span class="pal-name">${esc(p.name)}</span>
         <span class="pal-check" aria-hidden="true">${p.id===currentPaletteId?'&#10003;':''}</span>
@@ -3635,17 +3642,18 @@ function openPaletteSheet(){
     <div class="card-sub" id="cp-note" style="margin-top:6px;">You see a preview as you pick. Nothing is saved until you tap Save.</div>`);
   const cpM=document.getElementById('cp-main'), cpA=document.getElementById('cp-acc');
   if(cpM && cpA && !locked){
-    const orig=currentPaletteId;
+    let orig=currentPaletteId;
     const prev=()=>{ if(validHex(cpM.value)&&validHex(cpA.value)){ window._palRevert=()=>applyPalette(orig); const keep=customPal; customPal={main:cpM.value.toLowerCase(), accent:cpA.value.toLowerCase()}; applyPalette('custom'); customPal=keep; } };
-    cpM.oninput=prev; cpA.oninput=prev;
+    cpM.oninput=prev; cpA.oninput=prev; cpM.onchange=prev; cpA.onchange=prev;
     document.getElementById('cp-save').onclick=async ()=>{
       if(!validHex(cpM.value)||!validHex(cpA.value)) return;
       customPal={main:cpM.value.toLowerCase(), accent:cpA.value.toLowerCase()};
       const val=customPal.main+','+customPal.accent;
-      window._palRevert=null; applyPalette('custom'); lookCopySet('palette','custom'); lookCopySet('palette_custom',val);
-      try{ await window.storage.set(CUSTOM_PALETTE_KEY, val, false); await window.storage.set(PALETTE_KEY, 'custom', false); }catch(e){ showToast('Could not save your colors — check your connection'); return; }
+      orig='custom'; window._palRevert=null; applyPalette('custom'); lookCopySet('palette','custom'); lookCopySet('palette_custom',val);
+      try{ await window.storage.set(CUSTOM_PALETTE_KEY, val, false); await window.storage.set(PALETTE_KEY, 'custom', false); }catch(e){ console.error('Saving colors failed', e); showToast('Could not save your colors: '+((e&&e.message)||'check your connection')); return; }
+      try{ if(typeof sb!=='undefined' && sb && currentUser && !localSandboxMode){ const {data:chk}=await sb.from('barn_data').select('data').eq('user_id',currentUser.id).maybeSingle(); if(chk && chk.data && chk.data[CUSTOM_PALETTE_KEY]!==val){ showToast('Your colors did not reach your account — please try again'); return; } } }catch(e){}
       document.querySelectorAll('.pal-opt').forEach(x=>{ const on=x.dataset.pal==='custom'; x.classList.toggle('on',on); x.querySelector('.pal-check').innerHTML=on?'&#10003;':''; const sw=x.querySelectorAll('.pal-sw span'); if(on&&sw.length==2){ sw[0].style.background=customPal.main; sw[1].style.background=customPal.accent; } });
-      showToast('Your colors are saved');
+      orig='custom'; window._palRevert=null; showToast('Your colors are saved');
     };
   }
   document.querySelectorAll('[data-pal]').forEach(b=>b.onclick=async ()=>{
@@ -6317,7 +6325,8 @@ function performMerge(k, d, from){
   }, 10000);
 }
 
-function openEditSheet(r, origin){
+function openEditSheet(r, origin, opts){
+  const lean = !!(opts && opts.lean);   // opened from a pedigree: fields and Save only; sell / retire / delete live in the full profile
   const known = rabbits.filter(x=>x.id!==r.id).map(x=>x.name);
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>Edit ${esc(r.name)}</h2>
@@ -6350,13 +6359,13 @@ function openEditSheet(r, origin){
     </div>
     <div class="field"><label>General notes</label><textarea id="f-notes">${esc(r.notes||'')}</textarea></div>
     <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>
-    ${r.status!=='external'?`<div class="sheet-actions">
+    ${(!lean && r.status!=='external')?`<div class="sheet-actions">
       <button class="btn btn-secondary" id="f-forsale" style="flex:1;">${r.forSale?'For sale &#10003;':'Mark for sale'}</button>
       <button class="btn btn-secondary" id="f-sell" style="flex:1;">Sell</button></div>
     <div class="sheet-actions">
       <button class="btn btn-secondary" id="f-deceased" style="flex:1;">Mark deceased</button>
       <button class="btn btn-secondary" id="f-retired" style="flex:1;">Mark retired</button></div>`:''}
-    <div class="sheet-actions"><button class="btn btn-danger" id="f-delete" style="flex:1;">Delete permanently</button></div>`);
+    ${lean?'':`<div class="sheet-actions"><button class="btn btn-danger" id="f-delete" style="flex:1;">Delete permanently</button></div>`}`);
   attachSuggest(document.getElementById('f-color'), allKnownColors);
   attachSuggest(document.getElementById('f-sire'), ()=>rabbits.filter(x=>x.sex==='buck'&&x.id!==r.id).map(x=>x.name));
   attachSuggest(document.getElementById('f-dam'), ()=>rabbits.filter(x=>x.sex==='doe'&&x.id!==r.id).map(x=>x.name));
@@ -6405,7 +6414,8 @@ function openEditSheet(r, origin){
   };
   const ret=document.getElementById('f-retired');
   if(ret) ret.onclick=()=>{ r.status='retired'; saveData(); closeSheet(); render(); if(profileRabbitId) renderProfile(); showToast(r.name+' marked retired'); };
-  document.getElementById('f-delete').onclick=(e)=>{ armConfirm(e.target, 'Tap again to confirm', async ()=>{ if(!(await moveToTrash(r))){ showToast('Could not delete — check your connection and try again'); return; } rabbits=rabbits.filter(x=>x.id!==r.id); saveData(); closeSheet(); closeProfile(); render(); showToast(r.name+' deleted · kept 30 days in More › Recently deleted'); }); };
+  const delBtn=document.getElementById('f-delete');
+  if(delBtn) delBtn.onclick=(e)=>{ armConfirm(e.target, 'Tap again to confirm', async ()=>{ if(!(await moveToTrash(r))){ showToast('Could not delete — check your connection and try again'); return; } rabbits=rabbits.filter(x=>x.id!==r.id); saveData(); closeSheet(); closeProfile(); render(); showToast(r.name+' deleted · kept 30 days in More › Recently deleted'); }); };
 }
 
 const RABBIT_BREEDS = [
@@ -6730,7 +6740,7 @@ function pedExtraButtons(anc, back){
 function wirePedigreeTaps(container, r, back){
   container.querySelectorAll('[data-pedname]').forEach(b=>b.onclick=()=>{
     const anc=findByName(b.dataset.pedname); if(!anc) return;
-    openEditSheet(anc,back); pedExtraButtons(anc,back);
+    openEditSheet(anc,back,{lean:true}); pedExtraButtons(anc,back);
     pedDockOn(b);
   });
   container.querySelectorAll('[data-pedpath]').forEach(b=>b.onclick=()=>{
@@ -7546,15 +7556,13 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
         <canvas id="ped-preview-canvas" style="width:100%; height:320px; display:block; background:#fff;"></canvas>
       </div>
       <div id="ped-preview-status" class="card-sub" style="margin-bottom:12px; min-height:16px;">Loading preview&hellip;</div>
-      <div class="card-sub" style="margin:-6px 0 12px;">Logo and fonts are under More &rarr; Pedigree settings.</div>
+      <div class="card-sub" style="margin:-6px 0 12px;">Pedigree customization settings are under More &rarr; Pedigree settings.</div>
       ${hasCustomBackground?`<div class="field"><label>Background</label>
         <div class="seg" id="pp-bg-choice">
           <button type="button" data-v="custom" class="${useBackgroundDraft?'on':''}">Use custom background</button>
           <button type="button" data-v="plain" class="${useBackgroundDraft?'':'on'}">Plain white</button>
         </div>
       </div>`:''}
-      <div class="field"><label>Tagline (optional)</label><input id="pp-tagline" value="${esc(draft.tagline||'')}"></div>
-      <div class="field"><label>Instagram / Facebook</label><input id="pp-social" value="${esc(draft.social||'')}"></div>
       <div class="field"><label>Print colors</label><div class="seg" id="pp-theme">${themeButtonsHTML()}</div></div>
       <div class="field" id="pp-customwrap" style="${draft.printTheme==='custom'?'':'display:none;'}"><label>Custom accent color</label><input type="color" id="pp-customcolor" value="${esc(draft.customAccent||'#c6a15b')}" style="height:44px; padding:4px;"></div>
       <div class="field"><label>Fields to print</label>
@@ -7579,8 +7587,6 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
   }
 
   function readDraftFromControls(){
-    draft.tagline = document.getElementById('pp-tagline').value.trim();
-    draft.social = document.getElementById('pp-social').value.trim();
     draft.printTheme = document.querySelector('#pp-theme button.on').dataset.v;
     draft.customAccent = document.getElementById('pp-customcolor').value;
     draft.hasCertification = document.getElementById('pp-cert').checked;
@@ -7635,9 +7641,6 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       readDraftFromControls(); scheduleRegen(true);
     });
     document.getElementById('pp-customcolor').oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
-    ['pp-tagline','pp-social'].forEach(id=>{
-      document.getElementById(id).oninput = ()=>{ readDraftFromControls(); scheduleRegen(false); };
-    });
     document.getElementById('pp-cert').onchange = ()=>{ readDraftFromControls(); scheduleRegen(true); };
     document.getElementById('pp-watermark').onchange = (e)=>{
       document.getElementById('pp-watermarkwrap').style.display = e.target.checked ? '' : 'none';
