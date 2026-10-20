@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-bcredesign';
+const APP_VERSION = '2026-10-20-startover';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -8459,6 +8459,47 @@ function openAncestorCleanupSheet(){
     showToast(ids.size+' moved to Ancestors');
   };
 }
+
+// ---- Start over: clears this account's herd data after copying it all to a safe place (30 days to undo). Own account only. ----
+async function openStartOverSheet(){
+  if(viewingAsCustomer || localSandboxMode){ showToast('Start over is only available in your own account.'); return; }
+  let info=null;
+  try{ const {data}=await sb.rpc('reset_archive_info'); info=data||null; }catch(e){ info=null; }
+  const n=(a)=>Array.isArray(a)?a.length:0;
+  const counts=[[n(rabbits),'rabbits'],[n(planned),'planned breedings'],[n(projects),'projects'],[n(shows),'shows'],[n(expenses),'expenses'],[n(customReminders),'reminders'],[n(waitlist),'waitlist entries']].filter(x=>x[0]>0);
+  const cs=counts.length?counts.map(x=>x[0]+' '+x[1]).join(', '):'nothing yet';
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Start over</h2>
+    <div class="card-sub" style="margin-bottom:10px;">This clears this account&rsquo;s herd data and sets it up like new: <b>${esc(cs)}</b>.<br><br>
+    Your colors, pedigree settings and logo, and My info stay. Nothing is deleted right away: everything is first copied to a safe place, and you can put it back for 30 days.</div>
+    ${info?`<div class="lit-card" style="margin-bottom:12px;"><b>You can undo your last start over</b><div class="card-sub">Saved ${esc(shortD(String(info.archived_at).slice(0,10)))} &middot; ${esc(String(info.rabbits))} rabbits &middot; available until ${esc(shortD(String(info.expires_at).slice(0,10)))}</div>
+      <button class="btn btn-secondary" style="width:100%;margin-top:8px;" id="so-restore">Restore my data</button></div>`:''}
+    <button class="btn btn-secondary" style="width:100%;margin-bottom:12px;" id="so-backup">1. Download a backup file first</button>
+    <div class="field"><label>2. Type CLEAR to confirm</label><input id="so-word" autocomplete="off" autocapitalize="characters" placeholder="CLEAR"></div>
+    <div class="card-sub" id="so-status" style="min-height:16px;"></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-danger" id="so-go" disabled>Clear and start over</button></div>`);
+  const st=document.getElementById('so-status'), go=document.getElementById('so-go'), w=document.getElementById('so-word');
+  w.oninput=()=>{ go.disabled = w.value.trim().toUpperCase()!=='CLEAR'; };
+  document.getElementById('so-backup').onclick=()=>{ try{ downloadFullBackup(); st.textContent='Backup downloaded.'; }catch(e){ st.textContent='Could not download a backup: '+((e&&e.message)||e); } };
+  go.onclick=async ()=>{
+    if(w.value.trim().toUpperCase()!=='CLEAR') return;
+    go.disabled=true; st.textContent='Saving a safe copy and clearing…';
+    try{
+      await saveChain.catch(()=>{});
+      const {data,error}=await sb.rpc('reset_my_barn_data'); if(error) throw error;
+      if(!data||data.ok!==true) throw new Error('The account was not cleared.');
+      st.textContent='Done. Reloading…'; setTimeout(()=>window.location.reload(),600);
+    }catch(e){ console.error(e); go.disabled=false; st.textContent='Nothing was cleared: '+((e&&e.message)||e); }
+  };
+  const rb=document.getElementById('so-restore');
+  if(rb) rb.onclick=async ()=>{
+    rb.disabled=true; st.textContent='Restoring…';
+    try{
+      await saveChain.catch(()=>{});
+      const {data,error}=await sb.rpc('restore_my_barn_data'); if(error) throw error;
+      st.textContent='Restored. Reloading…'; setTimeout(()=>window.location.reload(),600);
+    }catch(e){ console.error(e); rb.disabled=false; st.textContent=((e&&e.message)||String(e)).replace(/^RESTORE_BLOCKED:\s*/,''); }
+  };
+}
 // Runs one More-menu action (also used by the grouped sub-menus below).
 function moreAction(k){
   if(k==='add') openAddSheet();
@@ -8474,6 +8515,7 @@ function moreAction(k){
   else if(k==='shows') openShowsSheet();
   else if(k==='cleanup') openAncestorCleanupSheet();
   else if(k==='myinfo') openMyInfoSheet();
+  else if(k==='startover') openStartOverSheet();
   else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
 }
 // A small second menu for a group of related items, with a Back button to More.
@@ -8486,13 +8528,12 @@ function openMoreGroup(title, items){
 }
 async function openMoreSheet(){
   const groups={
-    reminders:['Reminders',[['myreminders','My reminders'],['reminders','Reminders']]],
     import:['Import',[['import','Import from CSV'],['importpdf','Import from Pedigree PDF']]],
     records:['Records',[['ancestors','Ancestors'],['cleanup','Move herd rabbits to Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['trash','Recently deleted']]],
-    settings:['Settings',[['colors','Colors'],['pedigreesettings','Pedigree settings'],...(litterUiOn?[['kittags','Kit tags']]:[]),...(!localSandboxMode?[['myinfo','My info']]:[]),['backup','Backup and restore']]]
+    settings:['Settings',[['reminders','Reminders'],['colors','Colors'],['pedigreesettings','Pedigree settings'],...(litterUiOn?[['kittags','Kit tags']]:[]),...(!localSandboxMode?[['myinfo','My info']]:[]),['backup','Backup and restore'],...((!localSandboxMode&&!viewingAsCustomer)?[['startover','Start over (clear this account)']]:[])]]
   };
   const items=[['add','Add rabbit'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],...(litterUiOn?[['waitlist','Waitlist']]:[])];
-  const gitems=[['reminders','Reminders'],['import','Import'],['records','Records'],['settings','Settings']];
+  const gitems=[['import','Import'],['records','Records'],['settings','Settings']];
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
       <div class="section-label" style="margin:0 0 3px;">SIGNED IN AS</div>
