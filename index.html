@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-bcfit';
+const APP_VERSION = '2026-10-20-hnimport';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -7156,7 +7156,9 @@ function sanitizeForPdf(str){
   // hand icon) can't be rendered and will crash the PDF export
   // entirely if left in, so they're stripped out here rather
   // than left to fail at save time.
-  return String(str).replace(/[^\x00-\xFF]/g, '').replace(/\s+/g, ' ').trim();
+  // Curly quotes, dashes and similar (what a phone keyboard types) become their plain look-alikes so a name like
+  // Willow Tree’s keeps its apostrophe instead of losing it.
+  return String(str).replace(/[\u2018\u2019\u02BC\u02BB\u2032]/g,"'").replace(/[\u201C\u201D\u2033]/g,'"').replace(/[\u2010-\u2015\u2212]/g,'-').replace(/\u2026/g,'...').replace(/[\u00A0\u2000-\u200A\u202F]/g,' ').replace(/[^\x00-\xFF]/g, '').replace(/\s+/g, ' ').trim();
 }
 function buildOfficialPedigreeValues(r){
   const g = p => ancestorByPath(r.name, p);
@@ -7306,7 +7308,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   pdfDoc.registerFontkit(fontkit);
   const [b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15,b16,b17] = await loadPedigreeFontBytes();
   const [serifBold, serifItalic, sans, sansBold, mono, monoBold, playfair, cinzel, script, libre, dmserif, montserrat, jost, allura, alexbrush, blackletter, handwritten] = await Promise.all(
-    [b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15,b16,b17].map(b=>pdfDoc.embedFont(b))
+    [b1,b2,b3,b4,b5,b6,b7,b8,b9,b10,b11,b12,b13,b14,b15,b16,b17].map(b=>pdfDoc.embedFont(b,{features:{liga:false,clig:false,calt:false}}))
   );
   const fonts = { serifBold, serifItalic, sans, sansBold, mono, monoBold, playfair, cinzel, script, libre, dmserif, montserrat, jost, allura, alexbrush, blackletter, handwritten };
   const TITLE_FONTS = {
@@ -7385,7 +7387,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   // header
   let hx = M;
   const titleH = 24;
-  drawCenteredText('PEDIGREE', W/2, H-M, titleFontFor(pedigreeSettings2.titleFont), titleSizeFor(pedigreeSettings2.titleFont, 18), accent);
+  drawCenteredText(['script','allura','alexbrush','blackletter','handwritten'].indexOf(pedigreeSettings2.titleFont)>=0?'Pedigree':'PEDIGREE', W/2, H-M, titleFontFor(pedigreeSettings2.titleFont), titleSizeFor(pedigreeSettings2.titleFont, 18), accent);
   const headerTopY = H-M-titleH;
   const rabbitryName = myProfileForPdf.rabbitry_name || '';
   const rightLines = [['Breed', r.breed||'']];
@@ -7516,6 +7518,27 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     return h;
   }
 
+  // Long lines (a long color, a long name) wrap onto the next line instead of being cut off with "...".
+  // If wrapping would make a column too tall to fit the page, that column keeps the old cut-off behavior.
+  function wrapLinesFor(tier, lines){
+    const t=TIER[tier], maxW=colW-16, out=[];
+    lines.forEach(line=>{
+      if(!line || textWidth(line,fonts.sans,t.bodySize)<=maxW){ out.push(line); return; }
+      let cur='';
+      String(line).split(' ').forEach(word=>{
+        const tryL = cur?cur+' '+word:word;
+        if(!cur || textWidth(tryL,fonts.sans,t.bodySize)<=maxW) cur=tryL; else { out.push(cur); cur=word; }
+      });
+      if(cur) out.push(cur);
+    });
+    return out;
+  }
+  function wrapBoxes(tier, boxes){
+    const wrapped=boxes.map(b=>{ const l=wrapLinesFor(tier,b.lines); return Object.assign({}, b, {lines:l, h:computeBoxHeight(tier,l.length,b.winLines?b.winLines.length:0,!!b.winsLabel)}); });
+    const total=wrapped.reduce((a,b)=>a+b.h,0);
+    return total <= treeH*0.96 ? wrapped : boxes;
+  }
+
   function ancestorFields(anc, includeGC){
     if(!anc || !anc.name) return null;
     const l=[`Name: ${anc.name}`];
@@ -7530,7 +7553,8 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   }
 
   // self
-  const selfLinesArr = ancestorFields(r, true) || [`Name: ${r.name}`];
+  let selfLinesArr = ancestorFields(r, true) || [`Name: ${r.name}`];
+  { const w=wrapLinesFor('self', selfLinesArr), hh=computeBoxHeight('self', w.length, (r.wins||[]).slice(0,5).length, true); if(hh <= treeH*0.96) selfLinesArr=w; }
   const selfWinLines = (r.wins||[]).slice(0,5).map(pedigreeWinLineText);
   const selfBoxH = computeBoxHeight('self', selfLinesArr.length, selfWinLines.length, true);
   const selfY = treeBottom + (treeH-selfBoxH)/2;
@@ -7539,11 +7563,12 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   // parents
   const g = p => ancestorByPath(r.name, p);
   const parentDefs = [ {label:'SIRE (FATHER)', anc:g('s')}, {label:'DAM (MOTHER)', anc:g('d')} ];
-  const parentBoxes = parentDefs.map(({label,anc})=>{
+  let parentBoxes = parentDefs.map(({label,anc})=>{
     const lines = ancestorFields(anc, true) || ['Name: \u2014'];
     const winLines = anc ? (anc.wins||[]).slice(0,2).map(pedigreeWinLineText) : [];
     return { label, lines, winLines, h: computeBoxHeight('parent', lines.length, winLines.length, false) };
   });
+  parentBoxes = wrapBoxes('parent', parentBoxes);
   const pYs = pedigreeSpaceEvenly(parentBoxes.map(b=>b.h), treeH);
   parentBoxes.forEach((b,i)=>drawBox('parent', col2X, treeTop-pYs[i], colW, b.label, b.lines, null, b.winLines));
 
@@ -7552,19 +7577,20 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     {label:'PATERNAL GRANDSIRE', anc:g('ss')}, {label:'PATERNAL GRANDDAM', anc:g('sd')},
     {label:'MATERNAL GRANDSIRE', anc:g('ds')}, {label:'MATERNAL GRANDDAM', anc:g('dd')}
   ];
-  const gpBoxes = gpDefs.map(({label,anc})=>{
+  let gpBoxes = gpDefs.map(({label,anc})=>{
     const line1 = anc ? pedigreeFieldLine(anc, fields, true) : '';
     const lines = anc ? [anc.name, line1, anc.legsWins?`Legs: ${anc.legsWins}`:''].filter(Boolean) : ['\u2014'];
     const winLines = anc && anc.wins && anc.wins.length ? [pedigreeWinLineText(anc.wins[0])] : [];
     return { label, lines, winLines, h: computeBoxHeight('grand', lines.length, winLines.length, false) };
   });
+  gpBoxes = wrapBoxes('grand', gpBoxes);
   const gpYs = pedigreeSpaceEvenly(gpBoxes.map(b=>b.h), treeH);
   gpBoxes.forEach((b,i)=>drawBox('grand', col3X, treeTop-gpYs[i], colW, b.label, b.lines, null, b.winLines));
 
   // great-grandparents
   const ggPaths = ['sss','ssd','sds','sdd','dss','dsd','dds','ddd'];
   const ggLabels = ['GG SIRE 1','GG DAM 1','GG SIRE 2','GG DAM 2','GG SIRE 3','GG DAM 3','GG SIRE 4','GG DAM 4'];
-  const ggBoxes = ggPaths.map((p,i)=>{
+  let ggBoxes = ggPaths.map((p,i)=>{
     const anc = g(p);
     const parts=[];
     if(anc){
@@ -7579,6 +7605,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     const lines = anc ? [anc.name, parts.join('  \u00b7  ')].filter(Boolean) : ['\u2014'];
     return { label:ggLabels[i], lines, h: computeBoxHeight('great', lines.length, 0, false) };
   });
+  ggBoxes = wrapBoxes('great', ggBoxes);
   const ggYs = pedigreeSpaceEvenly(ggBoxes.map(b=>b.h), treeH);
   ggBoxes.forEach((b,i)=>drawBox('great', col4X, treeTop-ggYs[i], colW, b.label, b.lines, null, null));
 
@@ -7964,7 +7991,7 @@ async function buildBirthCertPdfBytes(d, prof){
   try{
     pdfDoc.registerFontkit(fontkit);
     const bytes=await loadPedigreeFontBytes();
-    const e=await Promise.all(bytes.map(b=>pdfDoc.embedFont(b)));
+    const e=await Promise.all(bytes.map(b=>pdfDoc.embedFont(b,{features:{liga:false,clig:false,calt:false}})));
     const [serifBold, serifItalic, sans, sansBold, mono, monoBold, playfair, cinzel, script, libre, dmserif, montserrat, jost, allura, alexbrush, blackletter, handwritten]=e;
     F={ serifBold, serifItalic, sans, sansBold, mono, title:{cormorant:serifBold, cinzel, playfair, libre, dmserif, montserrat, jost, script, allura, alexbrush, blackletter, handwritten}, adj:{script:1.3,allura:1.35,alexbrush:1.35,dmserif:0.95,blackletter:1.15,handwritten:1.2} };
   }catch(err){
@@ -8004,7 +8031,8 @@ async function buildBirthCertPdfBytes(d, prof){
 
   // title with a fine rule on each side
   top=Math.max(top+30,136);
-  const title='BIRTH CERTIFICATE', tfnt=tf(S.titleFont), tsz=fit(title,tfnt,ts(S.titleFont,40),W-300), tw=wid(title,tfnt,tsz);
+  const scriptTitle=['script','allura','alexbrush','blackletter','handwritten'].indexOf(S.titleFont)>=0;   // fancy fonts read better in normal capitals
+  const title=scriptTitle?'Birth Certificate':'BIRTH CERTIFICATE', tfnt=tf(S.titleFont), tsz=fit(title,tfnt,ts(S.titleFont,scriptTitle?31:40),W-300), tw=wid(title,tfnt,tsz);
   centered(title,W/2,top,tfnt,tsz,main);
   page.drawLine({start:{x:34,y:H-top+tsz*0.3},end:{x:W/2-tw/2-14,y:H-top+tsz*0.3},thickness:1.2,color:accent});
   page.drawLine({start:{x:W/2+tw/2+14,y:H-top+tsz*0.3},end:{x:W-34,y:H-top+tsz*0.3},thickness:1.2,color:accent});
@@ -10003,7 +10031,7 @@ function pdfParseBoxLines(lines, role){
 // Letter (792x612pt) — measured directly from a real Everbreed
 // pedigree export's page geometry.
 const EVERBREED_PDF_BOXES = [
-  ['SELF', 38.6, 268.9, 184.9, 358.9],
+  ['SELF', 38.6, 240.0, 184.9, 380.0],   // taller: some exports add an ACQ (date acquired) line, which pushes GC # and REG # lower
   ['SIRE', 196.1, 176.6, 375.4, 235.1],
   ['DAM', 196.1, 392.6, 375.4, 450.4],
   ['PGS', 385.9, 124.1, 565.1, 181.9],
@@ -10063,7 +10091,7 @@ function pdfFuzzyLabel(label){
 // value is sliced out from right after that label up to wherever the
 // next known label starts — so it works the same either way.
 function pdfEverbreedExtractFields(text){
-  const labels = ['ID','DOB','COLOR','BREED','WEIGHT','GC #','GEN'];
+  const labels = ['ID','DOB','ACQ','COLOR','BREED','WEIGHT','LEGS','GC #','REG #','GEN'];
   const positions=[];
   labels.forEach(label=>{
     const re = new RegExp('\\b'+pdfFuzzyLabel(label)+'\\s*:','i');
@@ -10152,7 +10180,7 @@ function buildPedigreeRowsFromSlots(slots, roleOrder){
 }
 function pdfParseEverbreedBoxLines(lines, role){
   if(!lines.length) return null;
-  const EVERBREED_FIELD_LABELS = ['ID','DOB','COLOR','BREED','WEIGHT','GC #','GEN'];
+  const EVERBREED_FIELD_LABELS = ['ID','DOB','ACQ','COLOR','BREED','WEIGHT','LEGS','GC #','REG #','GEN'];   // ACQ (date acquired) is recognised so it never ends up inside a name; it is not imported
   const buckPat = pdfFuzzyLabel('BUCK'), doePat = pdfFuzzyLabel('DOE');
   const buckInlineRe = new RegExp('(^|\\s)'+buckPat+'($|\\s)','i');
   const doeInlineRe = new RegExp('(^|\\s)'+doePat+'($|\\s)','i');
@@ -10171,6 +10199,7 @@ function pdfParseEverbreedBoxLines(lines, role){
     }
     if(!t) return;
     if(fieldLineRe.test(t)) fieldLines.push(t);
+    else if(fieldLines.length) fieldLines.push(t);   // a value that wrapped onto its own line after the labels (long colors make the box wrap); never part of the name
     else nameParts.push(t); // cattery prefix and/or given name, in reading order
   });
   const f = pdfEverbreedExtractFields(fieldLines.join(' '));
@@ -10187,9 +10216,9 @@ function pdfParseEverbreedBoxLines(lines, role){
     color: pdfDashClean(f['COLOR']),
     breed: canonicalizeBreed(pdfDashClean(f['BREED'])), // read per-box (mixed-breed pedigrees are possible)
     earNumber: pdfDefragmentText(pdfDashClean(f['ID'])),
-    registrationNumber: '', // Everbreed's layout has no separate reg # field
+    registrationNumber: pdfDashClean(f['REG #']),
     weight: weightMatch ? weightMatch[0] : '',
-    legsWins: '', // no leg-count field in this layout
+    legsWins: pdfDashClean(f['LEGS']),
     dob: csvParseDate(pdfDashClean(f['DOB'])),
     gc: pdfDashClean(f['GC #']), // Grand Champion # — carried into notes, same as Rabbit Register's GC #
     sex,
@@ -10491,6 +10520,107 @@ async function pdfGlyphItems(page){
   return items;
 }
 
+// HerdNerd's own pedigree PDF (what the pedigree maker here produces): lets a rabbit that was sold with a HerdNerd pedigree
+// be imported into another HerdNerd account. The layout is our own, so each box is found from its ribbon label.
+// Anything the breeder left out of the pedigree stays blank; lines the pedigree itself cut off with "..." lose the cut-off end.
+function parseHerdNerdPedigreePdf(items, viewport){
+  const T = s => String(s||'').replace(/\s+/g,' ').trim();
+  const all = items.filter(it=>it.str && it.str.trim());
+  // ribbon labels -> roles
+  const anchors = [];
+  const byTop = all.slice().sort((a,b)=>a.top-b.top||a.x-b.x);
+  byTop.forEach((it,i)=>{
+    const s=T(it.str); let role=null;
+    if(/^GENERATION$/i.test(s)) role='SELF';
+    else if(/^SIRE\s*\(FATHER\)$/i.test(s)) role='SIRE';
+    else if(/^DAM\s*\(MOTHER\)$/i.test(s)) role='DAM';
+    else if(/^(PATERNAL|MATERNAL)$/i.test(s)){
+      const nx = all.find(o=>o!==it && Math.abs(o.top-it.top)<2 && o.x>it.x && o.x-it.x<60 && /^GRAND(SIRE|DAM)$/i.test(T(o.str)));
+      if(nx) role = (/^PAT/i.test(s)?'P':'M')+'G'+(/SIRE/i.test(nx.str)?'S':'D');
+    } else { const m=s.match(/^GG\s*(SIRE|DAM)\s*(\d)$/i); if(m) role='GG'+m[1].toUpperCase()+m[2]; }
+    if(role) anchors.push({role, x:it.x, top:it.top});
+  });
+  const colOf = r => r==='SELF'?0 : (r==='SIRE'||r==='DAM')?1 : /^[PM]G[SD]$/.test(r)?2 : 3;
+  const colX = x => x<200?0 : x<400?1 : x<590?2 : 3;
+  const slots = {};
+  anchors.forEach(a=>{
+    const col=colOf(a.role);
+    const below = anchors.filter(b=>colOf(b.role)===col && b.top>a.top+4).map(b=>b.top);
+    // boxes in the grandparent column have a two-word ribbon, so the next ribbon in the column ends this box
+    const limit = Math.min(below.length?Math.min.apply(null,below)-2:520, 520);
+    const boxItems = all.filter(it=>colX(it.x)===col && it.top>a.top+4 && it.top<limit);
+    slots[a.role] = hnParseBox(pdfLinesFromItems(boxItems), a.role);
+  });
+  if(!slots.SELF || !slots.SELF.name) return { ok:false, error:"Couldn't find the main rabbit's details on this HerdNerd pedigree." };
+  // header: sex, birth date, breed
+  const head = all.filter(it=>it.top<110).map(it=>T(it.str));
+  const sexH = head.map(h=>h.match(/^Sex:\s*(Buck|Doe)/i)).find(Boolean);
+  slots.SELF.sex = sexH ? sexH[1].toLowerCase() : (slots.SELF.sex||'doe');
+  const dobH = head.map(h=>h.match(/^Date of Birth:\s*(.+)$/i)).find(Boolean);
+  if(dobH && !slots.SELF.dob) slots.SELF.dob = csvParseDate(dobH[1]) || pdfParseDob(dobH[1]);
+  const brH = head.map(h=>h.match(/^Breed:\s*(.+)$/i)).find(Boolean);
+  if(brH && !slots.SELF.breed) slots.SELF.breed = canonicalizeBreed(brH[1]);
+  const ORDER = ['SELF','SIRE','DAM','PGS','PGD','MGS','MGD','GGSIRE1','GGDAM1','GGSIRE2','GGDAM2','GGSIRE3','GGDAM3','GGSIRE4','GGDAM4'];
+  const rows=[]; const seen=new Set();
+  for(const role of ORDER){
+    const data=slots[role]; if(!data || !data.name) continue;
+    const key=nameKey(data.name); if(seen.has(key)) continue; seen.add(key);
+    const [sr,dr]=PEDIGREE_PARENT_OF[role]||[];
+    const sd=sr?slots[sr]:null, dd=dr?slots[dr]:null;
+    const sex = role==='SELF' ? data.sex : (PEDIGREE_MALE_ROLES.has(role)||/SIRE|^PGS$|^MGS$/.test(role) ? 'buck' : 'doe');
+    rows.push({ data:{ name:data.name, sex, breed:data.breed||'', color:data.color, earNumber:data.earNumber, dob:data.dob, weight:data.weight,
+      legsWins:data.legsWins, registrationNumber:data.registrationNumber, sireName:sd?sd.name:'', damName:dd?dd.name:'', notes:'', gcNumber:data.gc||'',
+      status: sex==='doe'?'open':'available' }, existing:findByName(data.name), action: findByName(data.name)?'skip':'new' });
+  }
+  return { ok:true, rows };
+}
+function hnParseBox(lines, role){
+  if(!lines.length) return null;
+  const d = { name:'', color:'', earNumber:'', registrationNumber:'', weight:'', legsWins:'', dob:null, gc:'', breed:'' };
+  const date = s => csvParseDate(s) || pdfParseDob(s);
+  const wt = s => { const m=String(s||'').match(/[\d.]+/); return m?m[0]:''; };
+  const dash = s => { s=String(s||'').trim(); return (s==='-'||s==='—')?'':s; };
+  if(/^Name:/i.test(lines[0])){
+    // parents and the main rabbit: one labelled field per line; a long name or color can wrap onto the next line
+    let last=null;
+    for(const line of lines){
+      const m=line.match(/^(Name|Ear\s*#|Weight|Color|DOB|Reg\s*#|GC\s*#|Legs|Breed):\s*(.*)$/i);
+      if(m){
+        last=m[1].toLowerCase().replace(/\s|#/g,''); const v=m[2];
+        if(last==='name') d.name=v; else if(last==='ear') d.earNumber=dash(v); else if(last==='weight') d.weight=wt(dash(v));
+        else if(last==='color') d.color=dash(v); else if(last==='dob') d.dob=date(v); else if(last==='reg') d.registrationNumber=dash(v);
+        else if(last==='gc') d.gc=dash(v); else if(last==='legs') d.legsWins=dash(v); else if(last==='breed') d.breed=canonicalizeBreed(dash(v));
+      } else if((last==='name'||last==='color') && !/·|SHOW WINS/i.test(line)){
+        if(last==='name') d.name=(d.name+' '+line).trim(); else d.color=(d.color+' '+line).trim();
+      } else if(/SHOW WINS/i.test(line)) last=null;
+    }
+    d.name=d.name.replace(/…$/,'').trim();
+    return d;
+  }
+  // grandparents and great-grandparents: a name line, then "EAR · weight · color · date · Reg x · GC x · Legs: x"
+  d.name = lines[0].replace(/…$/,'').trim();
+  if(/^[—-]+$/.test(d.name)) return null;
+  const rest = lines.slice(1);
+  const parts = [];
+  rest.forEach(l=>{ const m=l.match(/^Legs:\s*(.*)$/i); if(m && !/·/.test(l)) d.legsWins=dash(m[1].replace(/…$/,'')); else l.split(/\s*·\s*/).forEach(p=>parts.push(p.trim())); });
+  const left=[]; let wi=-1;
+  parts.forEach(p=>{
+    if(!p || p==='…') return;
+    let m;
+    if((m=p.match(/^Legs:\s*(.+)$/i))){ d.legsWins=m[1].replace(/…$/,'').trim(); }
+    else if((m=p.match(/^Reg\s+(.+)$/i))){ if(!/…$/.test(p)) d.registrationNumber=m[1].trim(); }
+    else if((m=p.match(/^GC\s+(.+)$/i))){ if(!/…$/.test(p)) d.gc=m[1].trim(); }
+    else if(/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(p)) d.dob=csvParseDate(p);
+    else if(/^[\d.]+\s*(lbs?|oz|kg|#)\b/i.test(p)){ d.weight=wt(p); wi=left.length; }
+    else if(!/…$/.test(p)) left.push(p);
+  });
+  // what is left is the ear number (before the weight) and the color (after it); with no weight, a short all-capitals word is the ear number
+  if(wi>=0){ if(wi>0) d.earNumber=left[0]; const c=left.slice(wi); if(c.length) d.color=c[0]; }
+  else if(left.length>=2){ d.earNumber=left[0]; d.color=left[1]; }
+  else if(left.length===1){ if(/^[A-Z0-9&\-.]{1,14}$/.test(left[0]) && !/^[A-Za-z]+$/.test(left[0]) ) d.earNumber=left[0]; else if(/^[A-Z0-9]{1,6}$/.test(left[0])) d.earNumber=left[0]; else d.color=left[0]; }
+  return d;
+}
+
 async function parsePedigreePdf(arrayBuffer){
   if(!window.pdfjsLib) return { ok:false, error:"The PDF reader didn't load — refresh the page and try again." };
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
@@ -10518,8 +10648,9 @@ async function parsePedigreePdf(arrayBuffer){
     if(Math.abs(viewport.width-612)<15 && Math.abs(viewport.height-792)<15) return parseWhosDueVariant2PedigreePdf(items, viewport);
     return parseWhosDuePedigreePdf(items, viewport);
   }
+  if(/GENERATION\s*1/.test(fullText) && /GG\s*SIRE\s*1/.test(fullText) && /PEDIGREE/.test(fullText)) return parseHerdNerdPedigreePdf(items, viewport);
   if(!/Rabbit Register/i.test(fullText)){
-    return { ok:false, error:"This doesn't look like a supported pedigree PDF — this importer currently understands Rabbit Register (Evans Software), Everbreed, and Who's Due pedigree exports." };
+    return { ok:false, error:"This doesn't look like a supported pedigree PDF — this importer currently understands Rabbit Register (Evans Software), Everbreed, Who's Due and HerdNerd pedigree exports." };
   }
   if(Math.abs(viewport.width-792)>15 || Math.abs(viewport.height-612)>15){
     return { ok:false, error:"This PDF's page size doesn't match the expected Rabbit Register layout, so the positions couldn't be read reliably." };
@@ -10626,7 +10757,7 @@ function wirePedigreeAiGate(){
 function openImportPedigreePdfSheet(){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Import from Pedigree PDF</h2>
-    <div class="card-sub" style="margin-bottom:12px;">Upload one or more 4-generation pedigree PDFs exported from Rabbit Register (Evans Software), Everbreed, or Who's Due — the formats many breeders share when a rabbit changes hands. Select as many at once as you like; the rabbit, its parents, grandparents, and great-grandparents in each one are read automatically and matched up by name — including across the files themselves, so the same ancestor shared by several pedigrees only shows up once — with everything shown to you for review before anything is added.</div>
+    <div class="card-sub" style="margin-bottom:12px;">Upload one or more 4-generation pedigree PDFs exported from Rabbit Register (Evans Software), Everbreed, Who's Due, or HerdNerd — the formats many breeders share when a rabbit changes hands. Select as many at once as you like; the rabbit, its parents, grandparents, and great-grandparents in each one are read automatically and matched up by name — including across the files themselves, so the same ancestor shared by several pedigrees only shows up once — with everything shown to you for review before anything is added.</div>
     <button class="btn btn-primary" style="width:100%;" id="pdfPickBtn">Choose pedigree PDF(s)</button>
     <div class="card-sub" style="margin:14px 0 8px;">Or, for a scanned/photographed pedigree, or a PDF that doesn't read cleanly above — have AI read it visually instead:</div>
     <div id="pedAiGateArea">${pedigreeAiGateHTML()}</div>
@@ -10653,7 +10784,7 @@ function openImportPedigreePdfSheet(){
         allRows = allRows.concat(markSelfRow(result.rows));
       }catch(err){
         console.error(err);
-        fileReports.push({name:file.name, ok:false, error:"Couldn't read this PDF — make sure it's a Rabbit Register, Everbreed, or Who's Due pedigree export."});
+        fileReports.push({name:file.name, ok:false, error:"Couldn't read this PDF — make sure it's a Rabbit Register, Everbreed, Who's Due, or HerdNerd pedigree export."});
       }
     }
     if(!allRows.length){
