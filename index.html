@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-earlylook';
+const APP_VERSION = '2026-10-20-extlines';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -6653,7 +6653,7 @@ function wirePedPrintOptions(r){
 function pedWide(){ return !!(window.matchMedia && window.matchMedia('(min-width:900px)').matches); }
 function pedFieldParts(n,isSelf){
   const f=(pedigreeSettings&&pedigreeSettings.fields)||{}, out=[], extra=[];
-  if(!n || n.external) return {facts:out, extra};
+  if(!n || !n.id) return {facts:out, extra};   // a name with no record behind it has nothing to show; a pedigree-only ancestor record does
   if(f.color && n.color) out.push(n.color);
   if(f.dob!==false && n.dob) out.push('DOB '+fmtDateShort(n.dob));
   if(f.ear && n.earNumber) out.push('Ear # '+n.earNumber);
