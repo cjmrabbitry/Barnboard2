@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-hnimport';
+const APP_VERSION = '2026-10-20-noprefix';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -6393,8 +6393,7 @@ function openEditSheet(r, origin, opts){
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>Edit ${esc(r.name)}</h2>
     <div class="row2">
-      <div class="field" style="flex:0 0 32%;"><label>Prefix</label><input id="f-prefix" list="prefix-options" value="${esc(r.prefix||'')}" placeholder="CJM" autocomplete="off">${prefixDatalistHTML()}</div>
-      <div class="field"><label>Name</label><input id="f-name" value="${esc(baseNameOf(r))}"></div>
+      <div class="field"><label>Name</label><input id="f-name" value="${esc(r.name||'')}"></div>
     </div>
     <div class="field"><label>Nickname (optional)</label><input id="f-alias" value="${esc(r.alias||'')}" placeholder="Nickname or previous name"></div>
     <div class="field"><label>Sex</label><div class="seg" id="f-sex">
@@ -6445,7 +6444,7 @@ function openEditSheet(r, origin, opts){
     };
     check(sire, finalSire=>check(dam, finalDam=>{
       const oldRName=r.name;
-      { const pf=document.getElementById('f-prefix').value.trim(), nb2=document.getElementById('f-name').value.trim(); r.prefix=pf; if(nb2) r.name=fullName(pf, nb2); }
+      { const nb2=document.getElementById('f-name').value.trim(); if(nb2) r.name=nb2; }   // one name field; any old stored prefix is left untouched
       repointName(oldRName, r.name);
       r.alias=document.getElementById('f-alias').value.trim();
       r.sex=sex; r.breed=document.getElementById('f-breed').value; r.color=document.getElementById('f-color').value;
@@ -6500,7 +6499,6 @@ function openAddSheet(){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Add rabbit</h2>
     <div class="row2">
-      <div class="field" style="flex:0 0 32%;"><label>Prefix</label><input id="f-prefix" list="prefix-options" placeholder="CJM" autocomplete="off">${prefixDatalistHTML()}</div>
       <div class="field"><label>Name</label><input id="f-name" placeholder="Clover"></div>
     </div>
     <div class="field"><label>Nickname (optional)</label><input id="f-alias" placeholder="What you call her or him"></div>
@@ -6578,9 +6576,8 @@ function openAddSheet(){
   document.getElementById('f-save').onclick=()=>{
     const base=document.getElementById('f-name').value.trim();
     if(!base){ showToast('Enter a name'); return; }
-    const prefix=document.getElementById('f-prefix').value.trim();
-    const name=fullName(prefix, base);
-    const d=gather(); if(d.weightBad){ showToast(d.weightBad); return; } d.prefix=prefix; d.alias=val('f-alias').trim();
+    const name=base;
+    const d=gather(); if(d.weightBad){ showToast(d.weightBad); return; } d.alias=val('f-alias').trim();
     const m=fuzzyMatches(name);
     if(m.length){
       openDuplicateSheet(name, m, chosen=>{
@@ -6590,7 +6587,7 @@ function openAddSheet(){
             // Even if this turns out to have been the wrong call, nothing typed here is lost: any blank fields on the
             // existing record get filled in from what was just entered, and it opens straight into editing.
             const typed = { breed:d.breed, color:d.color, earNumber:d.earNumber, dob:d.dob, sireName:d.sireName, damName:d.damName,
-              registrationNumber:d.registrationNumber, gcNumber:d.gcNumber, legsWins:d.legsWins, weight:d.weightLbs?String(d.weightLbs):'', alias:d.alias||'', prefix:d.prefix||'' };
+              registrationNumber:d.registrationNumber, gcNumber:d.gcNumber, legsWins:d.legsWins, weight:d.weightLbs?String(d.weightLbs):'', alias:d.alias||'' };
             Object.keys(typed).forEach(k=>{ if(!ex[k] && typed[k]) ex[k]=typed[k]; });
             saveData();
             closeSheet();
@@ -6612,7 +6609,7 @@ function commitAdd(name, sex, d){
   const sire=d.sireName||'', dam=d.damName||'';
   const newRabbit = blankRabbit({ name, sex, status, breed:d.breed||'', color:d.color||'', earNumber:d.earNumber||'',
     weight:d.weightLbs?String(d.weightLbs):'', dob:d.dob||null, sireName:sire, damName:dam,
-    registrationNumber:d.registrationNumber||'', gcNumber:d.gcNumber||'', legsWins:d.legsWins||'', prefix:d.prefix||'', alias:d.alias||'' });
+    registrationNumber:d.registrationNumber||'', gcNumber:d.gcNumber||'', legsWins:d.legsWins||'', alias:d.alias||'' });
   newRabbit.projects=(d.projectIds||[]).filter(id=>projects.some(p=>p.id===id));
   newRabbit.carries=Object.assign({}, d.carries||{});
   if(d.weightOz) newRabbit.weightLog=[{id:uid(), date:d.weightDate||todayStr(), oz:d.weightOz, source:'manual'}];
@@ -6878,7 +6875,6 @@ function openQuickNameSheet(parent, rel, back){
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>${esc(parent.name)}'s ${label.toLowerCase()}</h2>
     <div class="row2">
-      <div class="field" style="flex:0 0 32%;"><label>Prefix</label><input id="f-qprefix" list="prefix-options" placeholder="CJM" autocomplete="off">${prefixDatalistHTML()}</div>
       <div class="field"><label>Name &mdash; type to search your herd</label><input id="f-qn" placeholder="Type a name" autocomplete="off"></div>
     </div>
     <div class="field"><label>Nickname (optional)</label><input id="f-qalias" placeholder="Nickname or previous name" autocomplete="off"></div>
@@ -6922,11 +6918,10 @@ function openQuickNameSheet(parent, rel, back){
     }
   });
   document.getElementById('f-save').onclick=()=>{
-    const qpf=document.getElementById('f-qprefix').value.trim(), qbase=document.getElementById('f-qn').value.trim();
+    const qbase=document.getElementById('f-qn').value.trim();
     if(!qbase){ showToast('Enter a name'); return; }
-    const name=fullName(qpf,qbase);
+    const name=qbase;
     const fields = {
-      prefix: qpf,
       earNumber: document.getElementById('f-qear').value,
       weight: document.getElementById('f-qweight').value,
       dob: csvParseDate(document.getElementById('f-qdob').value)||null,
