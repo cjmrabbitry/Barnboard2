@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-extlines';
+const APP_VERSION = '2026-10-20-bcredesign';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -7910,6 +7910,144 @@ function openPdfPreviewSheet(blob, filename, title){
     showToast('Saved');
   };
 }
+/* ---------------- BIRTH CERTIFICATE (one-off, for a rabbit sold without a pedigree) ----------------
+   Opens a short form pre-filled from the rabbit. Every box can be changed, and nothing typed here is saved to the rabbit.
+   "Make certificate" draws a one-page PDF with your logo, fonts, tagline and contact details from Pedigree settings.
+   Buyer and Date adopted can be left blank to write in by hand. */
+function birthCertDefaults(r){
+  const look=(nm)=>{ const x=nm?findByName(nm):null; return x?{name:x.name, ear:x.earNumber||'', reg:x.registrationNumber||''}:{name:nm||'', ear:'', reg:''}; };
+  const sire=look(r.sireName), dam=look(r.damName), sl=r.sale||{};
+  return { name:r.name||'', sex:r.sex==='buck'?'Buck':'Doe', breed:r.breed||'', color:r.color||'', ear:r.earNumber||'', reg:r.registrationNumber||'', dob:r.dob||'',
+    buyer:sl.buyer||'', adopted:sl.pickupDate||sl.soldDate||'', sire, dam, issued:todayStr() };
+}
+function openBirthCertSheet(r){
+  const d=birthCertDefaults(r);
+  const f=(id,label,val,extra)=>`<div class="field"><label>${label}</label><input id="${id}" value="${esc(val||'')}" ${extra||''}></div>`;
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>Birth certificate &mdash; ${esc(r.name)}</h2>
+    <div class="card-sub" style="margin-bottom:10px;">Filled in from this rabbit. Change anything you like; nothing here is saved to the rabbit. Leave Buyer or Date adopted empty to write them in by hand.</div>
+    ${f('bc-name','Rabbit’s name',d.name)}
+    <div class="row2">${f('bc-buyer','Buyer',d.buyer)}${f('bc-adopted','Date adopted',d.adopted,'type="date"')}</div>
+    <div class="row2"><div class="field"><label>Sex</label><select id="bc-sex"><option ${d.sex==='Doe'?'selected':''}>Doe</option><option ${d.sex==='Buck'?'selected':''}>Buck</option></select></div>${f('bc-dob','Date of birth',d.dob,'type="date"')}</div>
+    <div class="row2">${f('bc-breed','Breed',d.breed)}${f('bc-color','Color',d.color)}</div>
+    <div class="row2">${f('bc-ear','Ear number',d.ear)}${f('bc-reg','Registration #',d.reg)}</div>
+    <div class="row2">${f('bc-sire','Sire (father)',d.sire.name)}${f('bc-sire-reg','Sire reg # / ear #',[d.sire.reg,d.sire.ear].filter(Boolean).join(' / '))}</div>
+    <div class="row2">${f('bc-dam','Dam (mother)',d.dam.name)}${f('bc-dam-reg','Dam reg # / ear #',[d.dam.reg,d.dam.ear].filter(Boolean).join(' / '))}</div>
+    ${f('bc-issued','Date issued',d.issued,'type="date"')}
+    <div class="field"><label>Colors</label><select id="bc-colors"><option value="app">My app colors</option><option value="bw">Black &amp; white</option></select></div>
+    <label style="display:flex; align-items:center; gap:8px; padding:8px 0; font-size:13px;"><input type="checkbox" id="bc-stmt" checked style="width:18px; height:18px;"> Include the statement and signature lines</label>
+    <div class="card-sub" id="bc-status" style="min-height:16px;"></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="bc-make">Make certificate</button></div>`);
+  document.getElementById('bc-make').onclick=async ()=>{
+    const v=id=>document.getElementById(id).value.trim();
+    if(!v('bc-name')){ showToast('Add a name first'); return; }
+    const data={ name:v('bc-name'), buyer:v('bc-buyer'), adopted:v('bc-adopted'), sex:v('bc-sex'), dob:v('bc-dob'), breed:v('bc-breed'), color:v('bc-color'), ear:v('bc-ear'), reg:v('bc-reg'),
+      sire:v('bc-sire'), sireReg:v('bc-sire-reg'), dam:v('bc-dam'), damReg:v('bc-dam-reg'), issued:v('bc-issued'), statement:document.getElementById('bc-stmt').checked, colors:v('bc-colors') };
+    const st=document.getElementById('bc-status'), btn=document.getElementById('bc-make'); btn.disabled=true; st.textContent='Making the certificate…';
+    try{
+      const prof=await getMyPedigreeProfile();
+      const bytes=await buildBirthCertPdfBytes(data, prof);
+      const blob=new Blob([bytes],{type:'application/pdf'});
+      openPdfPreviewSheet(blob, (data.name||'rabbit').replace(/\s+/g,'-')+'-birth-certificate.pdf', 'Birth certificate — '+data.name);
+    }catch(err){ console.error(err); btn.disabled=false; st.textContent='Could not make the certificate: '+((err&&err.message)||err); }
+  };
+}
+async function buildBirthCertPdfBytes(d, prof){
+  prof=prof||{};
+  const { PDFDocument, rgb, StandardFonts } = PDFLib;
+  const S = pedigreeSettings || {};
+  const hexToRgb=(hex)=>{ hex=hex.replace('#',''); const n=parseInt(hex,16); return rgb(((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255); };
+  const W=792, H=612;
+  const pdfDoc=await PDFDocument.create(); const page=pdfDoc.addPage([W,H]);
+  // the same fonts as the pedigree; if they can't be loaded, plain built-in fonts keep the certificate working
+  let F;
+  try{
+    pdfDoc.registerFontkit(fontkit);
+    const bytes=await loadPedigreeFontBytes();
+    const e=await Promise.all(bytes.map(b=>pdfDoc.embedFont(b)));
+    const [serifBold, serifItalic, sans, sansBold, mono, monoBold, playfair, cinzel, script, libre, dmserif, montserrat, jost, allura, alexbrush, blackletter, handwritten]=e;
+    F={ serifBold, serifItalic, sans, sansBold, mono, title:{cormorant:serifBold, cinzel, playfair, libre, dmserif, montserrat, jost, script, allura, alexbrush, blackletter, handwritten}, adj:{script:1.3,allura:1.35,alexbrush:1.35,dmserif:0.95,blackletter:1.15,handwritten:1.2} };
+  }catch(err){
+    console.warn('Certificate fonts not available, using built-in fonts', err);
+    const tb=await pdfDoc.embedFont(StandardFonts.TimesRomanBold), ti=await pdfDoc.embedFont(StandardFonts.TimesRomanItalic), h=await pdfDoc.embedFont(StandardFonts.Helvetica), hb=await pdfDoc.embedFont(StandardFonts.HelveticaBold), c=await pdfDoc.embedFont(StandardFonts.Courier);
+    F={ serifBold:tb, serifItalic:ti, sans:h, sansBold:hb, mono:c, title:{}, adj:{} };
+  }
+  const tf=key=>F.title[key]||F.serifBold, ts=(key,base)=>base*(F.adj[key]||1);
+  const T=v=>sanitizeForPdf(String(v==null?'':v));
+  // colors: the account's own app colors (main for the title and frame, accent for the fine lines), or plain black and white
+  let mainHex='#141414', accHex='#6b6b6b';
+  if(d.colors!=='bw'){ const p=(currentPaletteId==='custom')?customPalObj():(PALETTES.find(x=>x.id===currentPaletteId)||PALETTES.find(x=>x.id==='ribbon')); if(p){ mainHex=p.main; accHex=p.accent; } }
+  const main=hexToRgb(mainHex), accent=hexToRgb(accHex), ink=rgb(0.08,0.08,0.1), gray=rgb(0.33,0.33,0.36);
+  const wid=(t,f,s)=>f.widthOfTextAtSize(t,s);
+  const text=(t,x,top,f,s,c)=>{ if(t) page.drawText(t,{x,y:H-top,size:s,font:f,color:c||ink}); };
+  const centered=(t,cx,top,f,s,c)=>{ if(t) text(t,cx-wid(t,f,s)/2,top,f,s,c); };
+  const fit=(t,f,s,maxW)=>{ let z=s; while(z>8 && wid(t,f,z)>maxW) z-=1; return z; };
+  const longDate=iso=>{ if(!iso) return ''; const x=new Date(iso+'T00:00:00'); return isNaN(x)?'':x.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'}); };
+
+  // frame: a heavy band in the main color with a fine line inside it in the accent color
+  page.drawRectangle({x:10,y:10,width:W-20,height:H-20,borderColor:main,borderWidth:9});
+  page.drawRectangle({x:22,y:22,width:W-44,height:H-44,borderColor:accent,borderWidth:1.6});
+
+  // header: logo (or the rabbitry name) and tagline
+  const rabbitry=T(prof.rabbitry_name||'');
+  let top=50;
+  if(S.logoDataUrl){
+    try{
+      const lb=dataUrlToBytes(S.logoDataUrl);
+      const img=S.logoDataUrl.includes('image/png')?await pdfDoc.embedPng(lb):await pdfDoc.embedJpg(lb);
+      const dims=img.scale(1), ratio=Math.min(90/dims.width,80/dims.height), w=dims.width*ratio, h=dims.height*ratio;
+      page.drawImage(img,{x:W/2-w/2,y:H-top-h,width:w,height:h}); top+=h+4;
+    }catch(e){ console.warn('logo skipped',e); }
+  }
+  if(rabbitry){ const nf=tf(S.nameFont); const sz=fit(rabbitry,nf,ts(S.nameFont,20),W-160); centered(rabbitry,W/2,top+16,nf,sz,main); top+=26; }
+  if(S.tagline){ const tg=T(S.tagline); centered(tg,W/2,top+12,F.serifItalic,fit(tg,F.serifItalic,13,W-160),accent); top+=20; }
+
+  // title with a fine rule on each side
+  top=Math.max(top+36,136);
+  const title='BIRTH CERTIFICATE', tfnt=tf(S.titleFont), tsz=fit(title,tfnt,ts(S.titleFont,40),W-300), tw=wid(title,tfnt,tsz);
+  centered(title,W/2,top,tfnt,tsz,main);
+  page.drawLine({start:{x:34,y:H-top+tsz*0.3},end:{x:W/2-tw/2-14,y:H-top+tsz*0.3},thickness:1.2,color:accent});
+  page.drawLine({start:{x:W/2+tw/2+14,y:H-top+tsz*0.3},end:{x:W-34,y:H-top+tsz*0.3},thickness:1.2,color:accent});
+  top+=24;
+  const sub=('THIS CERTIFIES THE FOLLOWING RABBIT WAS BORN'+(rabbitry?' AT '+rabbitry.toUpperCase():'')).replace(/\s+/g,' ');
+  centered(sub,W/2,top,F.sansBold,fit(sub,F.sansBold,11,W-120),accent);
+
+  // fields: label, then the answer written on a line (left blank when there is no answer, to write in by hand)
+  const L=62, R=W/2+16, colW=W/2-78;
+  const row=(label,val,x,y,w)=>{
+    const lw=wid(label,F.serifBold,12.5); text(label,x,y,F.serifBold,12.5,main);
+    page.drawLine({start:{x:x+lw+8,y:H-y-3},end:{x:x+w,y:H-y-3},thickness:0.8,color:main});
+    const v=T(val); if(v){ const room=w-lw-14; text(v,x+lw+12,y-1,F.sans,fit(v,F.sans,11,room),ink); }
+  };
+  let fy=top+56; const step=42;
+  const reg=(n,r)=>n?(r?n+'  ('+r+')':n):'';
+  const rows=[
+    ['BUYER:',d.buyer,'RABBIT’S EAR NUMBER:',d.ear],
+    ['SEX:',d.sex,'COLOR:',d.color],
+    ['BREED:',d.breed,'DATE OF BIRTH:',longDate(d.dob)],
+    ['SIRE (FATHER):',reg(d.sire,d.sireReg),'DAM (MOTHER):',reg(d.dam,d.damReg)],
+    ['DATE ADOPTED:',longDate(d.adopted),'REGISTRATION #:',d.reg]
+  ];
+  rows.forEach(([l1,v1,l2,v2],i)=>{ row(l1,v1,L,fy+i*step,colW); row(l2,v2,R,fy+i*step,colW); });
+  fy+=rows.length*step;
+
+  // statement and signature lines
+  if(d.statement){
+    const st='I hereby certify that the above information is true and correct to the best of my knowledge.';
+    centered(st,W/2,fy+14,F.serifBold,fit(st,F.serifBold,12.5,W-110),ink);
+    const sy=96, issued=longDate(d.issued);
+    page.drawLine({start:{x:92,y:sy},end:{x:342,y:sy},thickness:0.8,color:main});
+    page.drawLine({start:{x:452,y:sy},end:{x:702,y:sy},thickness:0.8,color:main});
+    const breeder=T([prof.first_name,prof.last_name].filter(Boolean).join(' '));
+    centered('BREEDER'+(breeder?'  —  '+breeder:''),217,H-sy+16,F.serifBold,10.5,main);
+    centered('DATE',577,H-sy+16,F.serifBold,10.5,main);
+    if(issued) centered(issued,577,H-sy-4,F.sans,10.5,ink);
+  }
+  const contact=[prof.website,prof.phone,S.social].map(x=>T(x||'')).filter(Boolean).join('   ·   ');
+  if(contact) centered(contact,W/2,H-34,F.sans,9,gray);
+  return await pdfDoc.save();
+}
+
 async function generateStaticTemplatePedigreePDF(r, myProfileForPdf, templateNameArg, opts){
   try{
     const templateName = templateNameArg || myProfileForPdf.pedigree_static_template || myProfileForPdf.pedigree_template || 'generic';
@@ -9050,7 +9188,7 @@ function renderProfile(){
   if(profileTab==='overview') body.innerHTML = overviewTabHTML(r);
   else if(profileTab==='breeding') body.innerHTML = breedingTabHTML(r);
   else if(profileTab==='litters') body.innerHTML = littersTabHTML(r);
-  else if(profileTab==='pedigree') body.innerHTML = `<div id="pedTreeWrap">${pedigreeTreeHTML(r)}</div>${pedPrintOptionsHTML()}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPedPreview">Preview</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Print / Save PDF</button></div>`;
+  else if(profileTab==='pedigree') body.innerHTML = `<div id="pedTreeWrap">${pedigreeTreeHTML(r)}</div>${pedPrintOptionsHTML()}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPedPreview">Preview</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Print / Save PDF</button></div><div class="sheet-actions"><button class="btn btn-secondary" style="width:100%;" id="profBirthCert">Birth certificate (for a sale with no pedigree)</button></div>`;
   else if(profileTab==='photos') body.innerHTML = photosTabHTML(r);
   else if(profileTab==='notes') body.innerHTML = notesTabHTML(r);
   wireProfileTab(r);
@@ -9229,6 +9367,7 @@ function wireProfileTab(r){
     wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile); wirePedPrintOptions(r);
     const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
     const ppv=document.getElementById('profPedPreview'); if(ppv) ppv.onclick=()=>downloadOfficialPedigreePDF(r,{preview:true});
+    const bcb=document.getElementById('profBirthCert'); if(bcb) bcb.onclick=()=>openBirthCertSheet(r);
   }
   if(profileTab==='litters'){ attachCardEvents(); }
   if(profileTab==='photos'){
