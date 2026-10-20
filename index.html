@@ -1020,9 +1020,10 @@ async function initCloudStorage(user, opts){
     cloudDataCache = row.data || {};
   } else {
     cloudDataCache = {};
-    // Migrate existing local data on this device when available (never when an admin
-    // is opening someone else's account: that account must only ever hold its own data).
-    const legacyKeys = (opts && opts.noLegacy) ? [] : [RABBITS_KEY, PLANNED_KEY, EVENTS_KEY, THEME_KEY];
+    // A brand-new account starts completely empty. It used to copy any old HerdNerd data found in this browser
+    // into the new account; that is switched off so nothing left on a device (old or demo data) can ever land in a
+    // new account. The old data is not touched; it simply stays where it is.
+    const legacyKeys = [];
     for(const key of legacyKeys){
       try{ cloudDataCache[key] = JSON.parse((await legacyStorage.get(key)).value); }catch(e){
         try{ cloudDataCache[key] = (await legacyStorage.get(key)).value; }catch(ignore){}
@@ -2130,6 +2131,8 @@ function addDays(d,n){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+n)
 function daysBetween(a,b){ return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
 function fmtDate(d){ if(!d) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function fmtMoney(n){ n=Number(n)||0; if(Math.abs(n)<0.005) n=0; return (n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+// A price was entered (including $0 for a gift or trade) — as opposed to left blank.
+function priceEntered(v){ if(v==null) return false; const t=String(v).trim(); if(t==='') return false; const n=parseFloat(t.replace(/[^0-9.\-]/g,'')); return isFinite(n) && n>=0; }
 function parsePriceNum(v){ if(v==null) return 0; const n=parseFloat(String(v).replace(/[^0-9.\-]/g,'')); return isFinite(n)?n:0; }
 const EXPENSE_CATEGORIES = ['Feed','Hay & bedding','Caging & wire','Vet & meds','Show & entry fees','ARBA & registration','Supplies','Shipping & travel','Other'];
 function moneyPeriodRange(period){
@@ -2608,7 +2611,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-19-pednote';
+const APP_VERSION = '2026-10-20-nolegacy';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -5523,7 +5526,7 @@ function scoreSearch(pool,q){
     else if(r.earNumber && r.earNumber.toLowerCase().includes(q)) s=2.5;
     else if(r.color && r.color.toLowerCase().includes(q)) s=4;
     else if(r.breed && r.breed.toLowerCase().includes(q)) s=4.5;
-    else { const d=levenshtein(n,q); if(d<=3) s=3+d; }
+    else { const d=levenshtein(n,q); const lim = q.length>=8?2 : q.length>=5?1 : 0; if(d<=lim) s=3+d; }
     return {r,s};
   }).filter(x=>x.s<99).sort((a,b)=>a.s-b.s||a.r.name.localeCompare(b.r.name));
 }
@@ -5532,22 +5535,61 @@ function renderSearch(main){
   const counts={herd:scoreSearch(searchPool('herd'),q).length, anc:scoreSearch(searchPool('anc'),q).length, all:scoreSearch(searchPool('all'),q).length};
   const scored=scoreSearch(searchPool(searchMode),q).slice(0,25);
   const chip=(m,l)=>`<button type="button" class="btn ${searchMode===m?'btn-primary':'btn-secondary'} btn-sm" data-smode2="${m}">${l} &middot; ${counts[m]}</button>`;
+  // If the search clearly names one rabbit (e.g. "Abu"), say how each other result is related to it.
+  const relMap=new Map(), relOrder=[]; let anchor=null; const anchors=[];
+  if(q.length>=2){
+    // every record whose name contains what was typed counts (a rabbit can be entered under more than one spelling), up to 3
+    scoreSearch(searchPool('all'),q).filter(x=>x.s<=2.2).slice(0,3).forEach(x=>anchors.push(x.r));
+    anchor=anchors[0]||null;
+    anchors.forEach(an=>{
+      try{ const g=relativesOf(an,'everyone'); const nm=esc(an.name);
+        ['anc','sib','kid','aunt','other'].forEach(k=>(g[k]||[]).forEach(it=>{
+          if(relMap.has(it.r.id) || anchors.some(a=>a.id===it.r.id)) return;
+          let lab=it.label||''; const ix=lab.search(/ &middot; |, /);
+          let out;
+          if(k==='other') out='Related to '+nm+' &middot; '+lab;
+          else if(ix>=0) out=lab.slice(0,ix)+' of '+nm+lab.slice(ix);
+          else out=lab+' of '+nm;
+          relMap.set(it.r.id,out); relOrder.push(it.r.id); }));
+      }catch(e){}
+    });
+  }
+  const anchorNames=anchors.map(a=>a.name).join(' / ');
   const bar=`<div class="search-scope" style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${chip('herd','My herd')}${chip('anc','Ancestors of my herd')}${chip('all','Everyone I’ve entered')}</div>`;
   const where={herd:'in your herd',anc:'in the pedigrees of your herd',all:'in everything you’ve entered'}[searchMode];
   let body;
-  if(!scored.length){
+  const relPool=new Set(searchPool(searchMode).map(x=>x.id));
+  const relOnly=(!scored.length && anchor) ? relOrder.filter(id=>relPool.has(id)).slice(0,60).map(id=>rabbits.find(x=>x.id===id)).filter(Boolean) : [];
+  if(!scored.length && relOnly.length){
+    const ext=r=>r.status==='external';
+    body=`<div class="section-label" style="grid-column:1/-1;">${esc(anchorNames).toUpperCase()} IS NOT IN THIS LIST &mdash; RELATED RABBITS THAT ARE &middot; ${relOnly.length}</div>`+relOnly.map(r=>`<div class="card" ${ext(r)?'':`data-openprofile="${r.id}"`}><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${ext(r)?'<span class="badge b-gone">ANCESTOR</span>':statusBadge(r)}</div>
+        <div class="rel-path"><span class="rel-arrow">&#8627;</span> ${relMap.get(r.id)}</div>
+        <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext(r)?'Open / edit':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`).join('');
+  } else if(!scored.length){
     const other=['herd','anc','all'].filter(m=>m!==searchMode&&counts[m]>0);
     body=`<div class="empty" style="grid-column:1/-1;">No rabbit matches "${esc(searchQuery)}" ${where}.${other.length?' Try another list above — it has matches.':''}</div>`;
   } else {
-    body=`<div class="section-label" style="grid-column:1/-1;">${scored.length} MATCH${scored.length===1?'':'ES'} ${where.toUpperCase()}</div>`+scored.map(({r})=>{
+    const cardHTML=(r)=>{
       const ext=r.status==='external';
       const badge=ext?'<span class="badge b-gone">ANCESTOR</span>':statusBadge(r);
       return `<div class="card" ${ext?'':`data-openprofile="${r.id}"`}><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${badge}</div>
+        ${relMap.get(r.id)?`<div class="rel-path"><span class="rel-arrow">&#8627;</span> ${relMap.get(r.id)}</div>`:(anchors.some(a=>a.id===r.id)?'<div class="rel-path"><span class="rel-arrow">&#8627;</span> This is a rabbit you searched for</div>':'')}
         <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext?'Open / edit':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`;
-    }).join('');
+    };
+    body=`<div class="section-label" style="grid-column:1/-1;">${scored.length} MATCH${scored.length===1?'':'ES'} ${where.toUpperCase()}</div>`+scored.map(({r})=>cardHTML(r)).join('');
+    const shown=new Set(scored.map(x=>x.r.id));
+    const pool=new Set(searchPool(searchMode).map(x=>x.id));
+    const rel=relOrder.filter(id=>!shown.has(id)&&pool.has(id)).slice(0,60).map(id=>rabbits.find(x=>x.id===id)).filter(Boolean);
+    if(anchor && rel.length) body+=`<div class="section-label" style="grid-column:1/-1;">RELATED TO ${esc(anchorNames).toUpperCase()} &middot; ${rel.length}</div>`+rel.map(cardHTML).join('');
   }
-  main.innerHTML=bar+body;
-  main.querySelectorAll('[data-smode2]').forEach(b=>b.onclick=()=>{ searchMode=b.dataset.smode2; renderMain(); });
+  let relNote='';
+  if(anchors.length && relOrder.length){
+    const cnt=m=>{ const ids=new Set(searchPool(m).map(x=>x.id)); return relOrder.filter(id=>ids.has(id)).length; };
+    const parts=[['herd','in My herd'],['anc','in Ancestors'],['all','in Everyone']].map(([m,l])=>{ const n=cnt(m); return n?(m===searchMode?`<b>${n} ${l}</b>`:`<a href="#" data-smode2="${m}" style="color:var(--rb-text,var(--gold-deep));font-weight:800;">${n} ${l}</a>`):''; }).filter(Boolean);
+    relNote=`<div class="card-sub" style="grid-column:1/-1;margin:2px 4px 4px;">Rabbits related to ${esc(anchorNames)}: ${parts.join(' &middot; ')}</div>`;
+  }
+  main.innerHTML=bar+relNote+body;
+  main.querySelectorAll('[data-smode2]').forEach(b=>b.onclick=(e)=>{ e.preventDefault(); searchMode=b.dataset.smode2; renderMain(); });
   attachCardEvents();
 }
 document.getElementById('searchInput').addEventListener('input', e=>{
@@ -6565,9 +6607,52 @@ function commitAdd(name, sex, d){
   if(d.photo){ addPhotoToRabbit(newRabbit, d.photo, 'Primary').then(ok=>{ if(profileRabbitId===newRabbit.id) renderProfile(); }); }
 }
 
+// On a computer the tree boxes show the same details the printed pedigree will show (the checkboxes under the tree).
+function pedPrintOptionsHTML(){
+  const wide=pedWide();
+  const f=pedigreeSettings.fields||{}, locked=!!viewingAsCustomer;
+  const rows=[['dob','Date of birth',f.dob!==false],['reg','Registration #',!!f.reg],['gc','GC #',!!f.gc],['ear','Ear #',!!f.ear],['color','Color',!!f.color],['weight','Weight',!!f.weight]];
+  const cb=(id,label,on)=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; font-size:14px; font-weight:600;"><input type="checkbox" id="${id}" ${on?'checked':''} ${locked?'disabled':''} style="width:18px; height:18px;"> ${label}</label>`;
+  return `<div class="card no-tap" id="pedPrintOpts" style="margin:14px 0;"><details ${wide?'open':''}><summary class="section-label" style="margin:0 0 6px;cursor:pointer;">SHOWN IN THE BOXES AND ON THE PRINT</summary>
+    <div style="display:grid; grid-template-columns:repeat(${wide?3:1},minmax(0,1fr)); gap:0 18px;">${rows.map(([k,l,on])=>cb('pof-'+k,l,on)).join('')}${cb('pof-cert','Certification statement and signature line',pedigreeSettings.hasCertification!==false)}${cb('pof-wm','Diagonal watermark',!!pedigreeSettings.watermarkEnabled)}</div>
+    <div class="card-sub" style="margin-top:6px;">These are saved for your account. Logo, fonts and other customization are under More &rarr; Pedigree settings.</div></details></div>`;
+}
+function wirePedPrintOptions(r){
+  const box=document.getElementById('pedPrintOpts'); if(!box || viewingAsCustomer) return;
+  const apply=async ()=>{
+    pedigreeSettings.fields=Object.assign({}, pedigreeSettings.fields||{});
+    ['dob','reg','gc','ear','color','weight'].forEach(k=>{ pedigreeSettings.fields[k]=document.getElementById('pof-'+k).checked; });
+    pedigreeSettings.hasCertification=document.getElementById('pof-cert').checked;
+    pedigreeSettings.watermarkEnabled=document.getElementById('pof-wm').checked;
+    const wrap=document.getElementById('pedTreeWrap');
+    if(wrap){ wrap.innerHTML=pedigreeTreeHTML(r); wirePedigreeTaps(wrap, r, renderProfile); }
+    await savePedigreeSettings();
+  };
+  box.querySelectorAll('input[type=checkbox]').forEach(c=>c.onchange=apply);
+}
+function pedWide(){ return !!(window.matchMedia && window.matchMedia('(min-width:900px)').matches); }
+function pedFieldParts(n,isSelf){
+  const f=(pedigreeSettings&&pedigreeSettings.fields)||{}, out=[], extra=[];
+  if(!n || n.external) return {facts:out, extra};
+  if(f.color && n.color) out.push(n.color);
+  if(f.dob!==false && n.dob) out.push('DOB '+fmtDateShort(n.dob));
+  if(f.ear && n.earNumber) out.push('Ear # '+n.earNumber);
+  if(f.reg && n.registrationNumber) out.push('Reg # '+n.registrationNumber);
+  if(f.gc && n.gcNumber) out.push('GC # '+n.gcNumber);
+  if(f.weight && n.weight) out.push(fmtWeight(n.weight));
+  // legs and winnings always print, so they always show here too (5 for this rabbit, 2 for each ancestor, like the print)
+  if(n.legsWins) extra.push('Legs: '+n.legsWins);
+  (n.wins||[]).slice(0,isSelf?5:2).forEach(w=>{ try{ extra.push(pedigreeWinLineText(w)); }catch(e){} });
+  return {facts:out, extra};
+}
+function pedFieldLines(n,isSelf){ const x=pedFieldParts(n,isSelf); return x.facts.concat(x.extra); }
 function pedBox(node,path,role){
   const label = role?`<div class="pc" style="opacity:.6; text-transform:uppercase; font-size:9px; letter-spacing:.04em;">${role}</div>`:'';
   if(!node||!node.name) return `<div class="ped-box unknown" data-pedpath="${path}">${label}<div class="pn">+ Add name</div></div>`;
+  if(pedWide()){
+    const ls=pedFieldLines(node);
+    return `<div class="ped-box ${node.external?'unknown':''}" data-pedname="${esc(node.name)}">${label}<div class="pn">${esc(node.name)}</div>${ls.map(x=>`<div class="pc">${esc(x)}</div>`).join('')}</div>`;
+  }
   return `<div class="ped-box ${node.external?'unknown':''}" data-pedname="${esc(node.name)}">${label}<div class="pn">${esc(node.name)}</div>${node.color?`<div class="pc">${esc(node.color)}</div>`:''}</div>`;
 }
 function historyEntryHTML(damObj, e){
@@ -6660,7 +6745,7 @@ function openAncestorSheet(anc, origin){
 const pedOpen = new Set();
 function pedNestRow(node,path,role){
   if(!node||!node.name) return `<div class="pdn-row unknown" data-pedpath="${path}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">+ Add name</div></div></div>`;
-  return `<div class="pdn-row ${node.external?'anc':''}" data-pedname="${esc(node.name)}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">${esc(node.name)}</div>${node.color?`<div class="pc">${esc(node.color)}</div>`:''}</div></div>`;
+  return `<div class="pdn-row ${node.external?'anc':''}" data-pedname="${esc(node.name)}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">${esc(node.name)}</div>${(()=>{ const x=pedFieldParts(node); return (x.facts.length?`<div class="pc">${esc(x.facts.join(' \u00b7 '))}</div>`:'')+x.extra.map(l=>`<div class="pc">${esc(l)}</div>`).join(''); })()}</div></div>`;
 }
 function pedNestHTML(r){
   const g=p=>ancestorByPath(r.name,p);
@@ -6693,7 +6778,7 @@ function pedigreeTreeHTML(r){
   const gens=[['', 's','d'],['ss','sd','ds','dd'],['sss','ssd','sds','sdd','dss','dsd','dds','ddd']];
   const roleOf=(path)=>path.slice(-1)==='s'?(path.length===1?'Sire':path.length===2?'Grandsire':'Sire'):(path.length===1?'Dam':path.length===2?'Granddam':'Dam');
   let tree = `<div class="pt-head" style="grid-column:1;grid-row:1;">THIS RABBIT</div><div class="pt-head" style="grid-column:3;grid-row:1;">PARENTS</div><div class="pt-head" style="grid-column:5;grid-row:1;">GRANDPARENTS</div><div class="pt-head" style="grid-column:7;grid-row:1;">GREAT-GRANDPARENTS</div>`;
-  tree += cell(`<div class="ped-box pt-self"><div class="pn">${esc(r.name)}</div><div class="pc">${esc([r.sex==='doe'?'Doe':'Buck', r.color].filter(Boolean).join(' · '))}</div></div>`,1,2,8);
+  tree += cell(`<div class="ped-box pt-self"><div class="pn">${esc(r.name)}</div><div class="pc">${esc([r.sex==='doe'?'Doe':'Buck', r.color].filter(Boolean).join(' · '))}</div>${pedFieldLines(Object.assign({},r,{color:''}),true).map(x=>`<div class="pc">${esc(x)}</div>`).join('')}</div>`,1,2,8);
   ['s','d'].forEach((pth,i)=>{ tree += cell(pedBox(g(pth),pth,roleOf(pth)),3,2+i*4,4); });
   ['ss','sd','ds','dd'].forEach((pth,i)=>{ tree += cell(pedBox(g(pth),pth,roleOf(pth)),5,2+i*2,2); });
   ['sss','ssd','sds','sdd','dss','dsd','dds','ddd'].forEach((pth,i)=>{ tree += cell(pedBox(g(pth),pth,roleOf(pth)),7,2+i,1); });
@@ -8216,37 +8301,54 @@ function openAncestorCleanupSheet(){
     showToast(ids.size+' moved to Ancestors');
   };
 }
+// Runs one More-menu action (also used by the grouped sub-menus below).
+function moreAction(k){
+  if(k==='add') openAddSheet();
+  else if(k==='kittags') openKitTagsSettings();
+  else if(k==='waitlist') openWaitlistSheet();
+  else if(k==='colors') openPaletteSheet();
+  else if(k==='myreminders') openMyRemindersSheet();
+  else if(k==='reminders') openRemindersSheet();
+  else if(k==='pedigreesettings') openPedigreeSettingsSheet();
+  else if(k==='merge') openMergeSheet();
+  else if(k==='import') openImportCsvSheet();
+  else if(k==='importpdf') openImportPedigreePdfSheet();
+  else if(k==='shows') openShowsSheet();
+  else if(k==='cleanup') openAncestorCleanupSheet();
+  else if(k==='myinfo') openMyInfoSheet();
+  else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
+}
+// A small second menu for a group of related items, with a Back button to More.
+function openMoreGroup(title, items){
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>${esc(title)}</h2>
+    ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-moreg="${k}">${l}</button>`).join('')}
+    <div class="sheet-actions"><button class="btn btn-secondary" style="width:100%;" id="moreBack">&larr; Back to More</button></div>`);
+  document.getElementById('moreBack').onclick=()=>openMoreSheet();
+  document.querySelectorAll('[data-moreg]').forEach(b=>b.onclick=()=>moreAction(b.dataset.moreg));
+}
 async function openMoreSheet(){
-  const items=[...(litterUiOn?[['kittags','Kit tags'],['waitlist','Waitlist']]:[]),['add','Add rabbit'],['import','Import from CSV'],['importpdf','Import from Pedigree PDF'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],['myreminders','My reminders'],['reminders','Reminders'],['colors','Colors'],['pedigreesettings','Pedigree settings'],['ancestors','Ancestors'],['cleanup','Move herd rabbits to Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['trash','Recently deleted'],['backup','Backup and restore']];
+  const groups={
+    reminders:['Reminders',[['myreminders','My reminders'],['reminders','Reminders']]],
+    import:['Import',[['import','Import from CSV'],['importpdf','Import from Pedigree PDF']]],
+    records:['Records',[['ancestors','Ancestors'],['cleanup','Move herd rabbits to Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['trash','Recently deleted']]],
+    settings:['Settings',[['colors','Colors'],['pedigreesettings','Pedigree settings'],...(litterUiOn?[['kittags','Kit tags']]:[]),...(!localSandboxMode?[['myinfo','My info']]:[]),['backup','Backup and restore']]]
+  };
+  const items=[['add','Add rabbit'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],...(litterUiOn?[['waitlist','Waitlist']]:[])];
+  const gitems=[['reminders','Reminders'],['import','Import'],['records','Records'],['settings','Settings']];
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>More</h2>
     <div style="background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:12px;">
       <div class="section-label" style="margin:0 0 3px;">SIGNED IN AS</div>
       <div style="font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(currentUser?.email||'')}</div>
     </div>
     ${isAdminUser ? `<button class="btn btn-primary" style="width:100%; margin-bottom:8px;" id="openAdminBtn">Admin — all accounts</button>` : ''}
-    ${!localSandboxMode ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="myInfoBtn">My info</button>` : ''}
-    ${(!localSandboxMode && !viewingAsCustomer) ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="practiceModeBtn">Try practice mode (local only)</button>` : ''}
     ${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" data-more="${k}">${l}</button>`).join('')}
+    ${gitems.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;" data-moregroup="${k}"><span>${l}</span><span aria-hidden="true">&rsaquo;</span></button>`).join('')}
+    ${(!localSandboxMode && !viewingAsCustomer) ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:8px;" id="practiceModeBtn">Try practice mode (local only)</button>` : ''}
     <button class="btn btn-danger" style="width:100%; margin-top:4px;" id="signOutBtn">Sign out</button>`);
   if(document.getElementById('openAdminBtn')) document.getElementById('openAdminBtn').onclick = openAdminSheet;
-  if(document.getElementById('myInfoBtn')) document.getElementById('myInfoBtn').onclick = openMyInfoSheet;
   if(document.getElementById('practiceModeBtn')) document.getElementById('practiceModeBtn').onclick = enterPracticeMode;
-  document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>{
-    const k=b.dataset.more;
-    if(k==='add') openAddSheet();
-    else if(k==='kittags') openKitTagsSettings();
-    else if(k==='waitlist') openWaitlistSheet();
-    else if(k==='colors') openPaletteSheet();
-    else if(k==='myreminders') openMyRemindersSheet();
-    else if(k==='reminders') openRemindersSheet();
-    else if(k==='pedigreesettings') openPedigreeSettingsSheet();
-    else if(k==='merge') openMergeSheet();
-    else if(k==='import') openImportCsvSheet();
-    else if(k==='importpdf') openImportPedigreePdfSheet();
-    else if(k==='shows') openShowsSheet();
-    else if(k==='cleanup') openAncestorCleanupSheet();
-    else { currentTab=k; closeSheet(); render(); window.scrollTo(0,0); }
-  });
+  document.querySelectorAll('[data-more]').forEach(b=>b.onclick=()=>moreAction(b.dataset.more));
+  document.querySelectorAll('[data-moregroup]').forEach(b=>b.onclick=()=>{ const g=groups[b.dataset.moregroup]; openMoreGroup(g[0], g[1]); });
   document.getElementById('signOutBtn').onclick = async ()=>{
     closeSheet();
     if(localSandboxMode){ window.location.reload(); return; }
@@ -8314,8 +8416,8 @@ const MONEY_PERIOD_LABELS = {thismonth:'This month', lastmonth:'Last month', thi
 function moneyActivityForPeriod(period){
   const soldInPeriod = rabbits.filter(r=>r.status==='sold' && r.sale && r.sale.soldDate && inMoneyPeriod(r.sale.soldDate, period))
     .concat(soldKitPseudoRabbits().filter(r=>r.sale.soldDate && inMoneyPeriod(r.sale.soldDate, period)));
-  const soldWithPrice = soldInPeriod.filter(r=>parsePriceNum(r.sale.price) > 0);
-  const soldNoPrice = soldInPeriod.filter(r=>!(parsePriceNum(r.sale.price) > 0));
+  const soldWithPrice = soldInPeriod.filter(r=>priceEntered(r.sale.price));
+  const soldNoPrice = soldInPeriod.filter(r=>!priceEntered(r.sale.price));
   const expensesInPeriod = expenses.filter(e=>inMoneyPeriod(e.date, period));
   return {soldWithPrice, soldNoPrice, expensesInPeriod};
 }
@@ -8452,11 +8554,11 @@ function openAddPriceSheet(r){
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
     <h2>Add sale price — ${esc(r.name)}</h2>
     <div class="card-sub" style="margin-bottom:12px;">Sold ${fmtDate(r.sale.soldDate)}${r.sale.buyer?' &middot; Sold to '+esc(r.sale.buyer):''}</div>
-    <div class="field"><label>Sale price ($)</label><input type="number" id="f-price-add" value="${esc(r.sale.price||'')}" placeholder="150"></div>
+    <div class="field"><label>Sale price ($)</label><input type="number" id="f-price-add" value="${esc(r.sale.price||'')}" placeholder="150"><div class="card-sub" style="margin-top:4px;">Enter 0 for a gift or trade.</div></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-price-save">Save</button></div>`);
   document.getElementById('f-price-save').onclick = async ()=>{
     const v = document.getElementById('f-price-add').value.trim();
-    if(!v || parsePriceNum(v)<=0){ showToast('Enter a price greater than 0'); return; }
+    if(!priceEntered(v)){ showToast('Enter a price (0 is fine for a gift or trade)'); return; }
     r.sale.price = v;
     await saveData(); closeSheet(); render(); showToast(r.name+' price added');
   };
@@ -8928,7 +9030,7 @@ function renderProfile(){
   if(profileTab==='overview') body.innerHTML = overviewTabHTML(r);
   else if(profileTab==='breeding') body.innerHTML = breedingTabHTML(r);
   else if(profileTab==='litters') body.innerHTML = littersTabHTML(r);
-  else if(profileTab==='pedigree') body.innerHTML = `${pedigreeTreeHTML(r)}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPedPreview">Preview</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Print / Save PDF</button></div>`;
+  else if(profileTab==='pedigree') body.innerHTML = `<div id="pedTreeWrap">${pedigreeTreeHTML(r)}</div>${pedPrintOptionsHTML()}<div class="sheet-actions" style="flex-wrap:wrap;"><button class="btn btn-secondary" style="flex:1;" id="profPedPreview">Preview</button><button class="btn btn-primary" style="flex:1;" id="profOfficialPdf">Print / Save PDF</button></div>`;
   else if(profileTab==='photos') body.innerHTML = photosTabHTML(r);
   else if(profileTab==='notes') body.innerHTML = notesTabHTML(r);
   wireProfileTab(r);
@@ -9104,7 +9206,7 @@ function wireProfileTab(r){
     });
   }
   if(profileTab==='pedigree'){
-    wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile);
+    wirePedigreeTaps(document.getElementById('profileBody'), r, renderProfile); wirePedPrintOptions(r);
     const pob=document.getElementById('profOfficialPdf'); if(pob) pob.onclick=()=>downloadOfficialPedigreePDF(r);
     const ppv=document.getElementById('profPedPreview'); if(ppv) ppv.onclick=()=>downloadOfficialPedigreePDF(r,{preview:true});
   }
