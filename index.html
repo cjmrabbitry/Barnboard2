@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-noprefix';
+const APP_VERSION = '2026-10-20-packed';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -7388,7 +7388,8 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   const rightLines = [['Breed', r.breed||'']];
   if(fields.dob!==false) rightLines.push(['Date of Birth', r.dob?fmtDate(r.dob):'']);
   rightLines.push(['Sex', r.sex==='doe'?'Doe':'Buck']);
-  const headerBottomY = headerTopY - 44;
+  const showHeaderEar = fields.ear!==false && !!(r.earNumber && String(r.earNumber).trim());
+  const headerBottomY = headerTopY - (showHeaderEar ? 58 : 44);
 
   let logoImg = null;
   if(pedigreeSettings2.logoDataUrl){
@@ -7405,6 +7406,10 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   if(pedigreeSettings2.tagline) drawText(pedigreeSettings2.tagline, hx, headerTopY-22, fonts.mono, 7, accent);
 
   const rightX = W-M; let ry = headerTopY;
+  if(showHeaderEar){   // the main rabbit's ear number, bold, above the breed (so it isn't repeated inside the main card)
+    const et = `Ear #: ${sanitizeForPdf(String(r.earNumber).trim())}`, ew = textWidth(et, fonts.sansBold, 11);
+    drawText(et, rightX-ew, ry, fonts.sansBold, 11, black); ry -= 17;
+  }
   rightLines.forEach(([label,val])=>{
     const t = `${label}: ${val}`, w=textWidth(t,fonts.sans,8.5);
     drawText(t, rightX-w, ry, fonts.sans, 8.5, gray); ry -= 13;
@@ -7473,136 +7478,144 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
     }
   }
 
-  // tree
+  // tree: rounded cards with serif names and bracket connectors (same look as the on-screen preview).
+  // Every column shrinks its text together until all of its cards fit on the page, so nothing is cut off.
   const treeTop = headerBottomY-12, treeBottom = footerTopY+16, treeH = treeTop-treeBottom;
-  const colGap=12, colW=(W-2*M-3*colGap)/4;
-  const col1X=M, col2X=col1X+colW+colGap, col3X=col2X+colW+colGap, col4X=col3X+colW+colGap;
-
+  const colGap=16, colW=(W-2*M-3*colGap)/4;
+  const colXs=[M, M+(colW+colGap), M+2*(colW+colGap), M+3*(colW+colGap)];
+  const accLum = (()=>{ const n=parseInt(accentHex.replace('#',''),16); return (0.299*((n>>16)&255)+0.587*((n>>8)&255)+0.114*(n&255))/255; })();
+  const onAccent = accLum>0.62 ? rgb(0.08,0.08,0.08) : white;
+  const connGray = rgb(0.62,0.62,0.62), cardBorder = rgb(0.82,0.82,0.82), ink = rgb(0.09,0.09,0.09), inkSoft = rgb(0.3,0.3,0.3), labelGray = rgb(0.48,0.48,0.5);
   const TIER = {
-    self:  { pre:14, ribbonH:15, postRibbon:10, lineH:12.5, bodySize:9,   ribbonSize:8,   ribbonPadX:8, borderW:1,    winGapA:7, winGapB:10, labelGap:11, winLineH:11,  winSize:8   },
-    parent:{ pre:10, ribbonH:12, postRibbon:8,  lineH:10.5, bodySize:8,   ribbonSize:6.5, ribbonPadX:7, borderW:0.75, winGapA:6, winGapB:9,  labelGap:9,  winLineH:9.5, winSize:7   },
-    grand: { pre:8,  ribbonH:10, postRibbon:6,  lineH:9,    bodySize:7,   ribbonSize:5.5, ribbonPadX:6, borderW:0.75, winGapA:5, winGapB:8,  labelGap:8,  winLineH:8,   winSize:6.5 },
-    great: { pre:6,  ribbonH:9,  postRibbon:5,  lineH:7.5,  bodySize:6.2, ribbonSize:4.8, ribbonPadX:5, borderW:0.6,  winGapA:0, winGapB:0,  labelGap:0,  winLineH:0,   winSize:0   }
+    self:  { pad:10, labelSize:5.8, nameSize:13.5, bodySize:9,   lineH:12,  winSize:8,   winLineH:10.5, radius:9, gapA:5, gapB:6 },
+    parent:{ pad:9,  labelSize:5.5, nameSize:11.5, bodySize:8,   lineH:10.4,winSize:7,   winLineH:9.2,  radius:7, gapA:4, gapB:5 },
+    grand: { pad:7,  labelSize:5,   nameSize:9.2,  bodySize:7,   lineH:8.6, winSize:6.2, winLineH:7.8,  radius:6, gapA:3, gapB:4 },
+    great: { pad:6,  labelSize:4.6, nameSize:7.8,  bodySize:6.2, lineH:7.3, winSize:5.6, winLineH:7,    radius:5, gapA:0, gapB:0 }
   };
-  const BOTTOM_PAD=9;
-  function computeBoxHeight(tier, linesCount, winLinesCount, hasLabel){
-    const t=TIER[tier];
-    let h = t.pre+t.ribbonH+t.postRibbon+linesCount*t.lineH;
-    if(winLinesCount>0){ h += t.winGapA+t.winGapB; if(hasLabel) h+=t.labelGap; h += winLinesCount*t.winLineH; }
-    return h+BOTTOM_PAD;
+  const scaledTier = (key, s)=>{ const t=TIER[key], o={}; Object.keys(t).forEach(k=>{ o[k]=t[k]*s; }); return o; };
+  const MIN_GAP = 3;
+  function roundRectPath(w,h,r){ r=Math.min(r,w/2,h/2); return `M ${r} 0 H ${w-r} Q ${w} 0 ${w} ${r} V ${h-r} Q ${w} ${h} ${w-r} ${h} H ${r} Q 0 ${h} 0 ${h-r} V ${r} Q 0 0 ${r} 0 Z`; }
+  // word wrap that also breaks a single over-long word, so no line ever runs past the card
+  function wrapToWidth(text, font, size, maxW){
+    text = String(text==null?'':text); if(!text) return [''];
+    const out=[]; let cur='';
+    const pushWord = (word)=>{
+      while(textWidth(word,font,size)>maxW && word.length>1){
+        let n=word.length; while(n>1 && textWidth(word.slice(0,n),font,size)>maxW) n--;
+        if(cur){ out.push(cur); cur=''; }
+        out.push(word.slice(0,n)); word=word.slice(n);
+      }
+      const tryL = cur ? cur+' '+word : word;
+      if(!cur || textWidth(tryL,font,size)<=maxW) cur=tryL; else { out.push(cur); cur=word; }
+    };
+    text.split(' ').filter(x=>x!=='').forEach(pushWord);
+    if(cur) out.push(cur);
+    return out.length?out:[''];
   }
-  function drawBox(tier, x, yTop, w, ribbonText, lines, winsLabel, winLines){
-    const t=TIER[tier];
-    const h = computeBoxHeight(tier, lines.length, winLines?winLines.length:0, !!winsLabel);
-    page.drawRectangle({ x, y:yTop-h, width:w, height:h, borderColor:accent, borderWidth:t.borderW, color:white, opacity: usingBackground?0.86:1 });
-    let cy = yTop - t.pre;
-    const rw = textWidth(ribbonText, fonts.monoBold, t.ribbonSize) + t.ribbonPadX*2;
-    const rx = x + (w-rw)/2;
-    page.drawRectangle({ x:rx, y:cy-t.ribbonH, width:rw, height:t.ribbonH, color:accent });
-    const txtW = textWidth(ribbonText, fonts.monoBold, t.ribbonSize);
-    page.drawText(ribbonText, { x: rx+(rw-txtW)/2, y: cy-t.ribbonH/2-t.ribbonSize*0.33, size:t.ribbonSize, font:fonts.monoBold, color:white });
-    cy -= t.ribbonH + t.postRibbon;
-    lines.forEach(line=>{ drawText(truncateToWidth(line,fonts.sans,t.bodySize,w-16), x+8, cy, fonts.sans, t.bodySize, black); cy -= t.lineH; });
-    if(winLines && winLines.length){
-      cy -= t.winGapA;
-      page.drawLine({start:{x:x+8,y:cy},end:{x:x+w-8,y:cy},thickness:0.5,color:accent});
-      cy -= t.winGapB;
-      if(winsLabel){ drawText(winsLabel, x+8, cy, fonts.monoBold, tier==='self'?7:6, accent); cy -= t.labelGap; }
-      winLines.forEach(wl=>{ drawText(truncateToWidth(wl,fonts.sans,t.winSize,w-16), x+8, cy, fonts.sans, t.winSize, black); cy -= t.winLineH; });
+  // fields -> one short item each ("Ear # X"), color kept separate; wins as text lines
+  function specFor(anc, label, tier, winCount, forSelf){
+    const spec = { label, tier, name:'—', color:'', ear:'', items:[], wins:[], winLabel: forSelf };
+    if(!anc || !anc.name) return spec;
+    spec.name = anc.name;
+    if(fields.color && anc.color) spec.color = anc.color;
+    const dateFn = tier==='great' ? fmtDateShort : fmtDate;
+    if(fields.ear && anc.earNumber && !forSelf) spec.items.push('Ear # '+anc.earNumber);   // the main rabbit's ear # is in the page header instead
+    if(fields.weight && anc.weight) spec.items.push('Weight '+fmtWeight(anc.weight));
+    if(fields.dob!==false && anc.dob) spec.items.push('DOB '+dateFn(anc.dob));
+    if(fields.reg && anc.registrationNumber) spec.items.push('Reg # '+anc.registrationNumber);
+    if(fields.gc && anc.gcNumber) spec.items.push('GC # '+anc.gcNumber);
+    if(anc.legsWins) spec.items.push('Legs: '+anc.legsWins);
+    spec.wins = (anc.wins||[]).slice(0,winCount).map(pedigreeWinLineText);
+    return spec;
+  }
+  function layoutCard(spec, s){
+    const t=scaledTier(spec.tier, s), maxW=colW-2*t.pad;
+    // ear number sits in the top-right corner on the label row; if it can't fit there, it drops to its own "Ear # x" line
+    let earSize=0, earW=0, earOnLine=false;
+    if(spec.ear){
+      earSize = t.labelSize*1.7;
+      const lblW = textWidth(spec.label, fonts.sans, t.labelSize);
+      const calc = sz => textWidth('EAR ', fonts.sans, t.labelSize) + textWidth(spec.ear, fonts.sansBold, sz);
+      earW = calc(earSize);
+      if(lblW + 8 + earW > maxW){ earSize = t.labelSize*1.15; earW = calc(earSize); }
+      if(lblW + 8 + earW > maxW){ earOnLine = true; earSize = 0; earW = 0; }
     }
-    return h;
-  }
-
-  // Long lines (a long color, a long name) wrap onto the next line instead of being cut off with "...".
-  // If wrapping would make a column too tall to fit the page, that column keeps the old cut-off behavior.
-  function wrapLinesFor(tier, lines){
-    const t=TIER[tier], maxW=colW-16, out=[];
-    lines.forEach(line=>{
-      if(!line || textWidth(line,fonts.sans,t.bodySize)<=maxW){ out.push(line); return; }
+    const nameLines = wrapToWidth(spec.name, fonts.serifBold, t.nameSize, maxW);
+    const lines=[];
+    if(spec.color) wrapToWidth(spec.color, fonts.sans, t.bodySize, maxW).forEach(x=>lines.push(x));
+    if(true){
+      // pack short items side by side on one line ("Ear # X  ·  DOB 7/1/2025") to save height
       let cur='';
-      String(line).split(' ').forEach(word=>{
-        const tryL = cur?cur+' '+word:word;
-        if(!cur || textWidth(tryL,fonts.sans,t.bodySize)<=maxW) cur=tryL; else { out.push(cur); cur=word; }
+      spec.items.forEach(item=>{
+        const tryL = cur ? cur+'  ·  '+item : item;
+        if(!cur || textWidth(tryL,fonts.sans,t.bodySize)<=maxW) cur=tryL;
+        else { wrapToWidth(cur,fonts.sans,t.bodySize,maxW).forEach(x=>lines.push(x)); cur=item; }
       });
-      if(cur) out.push(cur);
-    });
-    return out;
-  }
-  function wrapBoxes(tier, boxes){
-    const wrapped=boxes.map(b=>{ const l=wrapLinesFor(tier,b.lines); return Object.assign({}, b, {lines:l, h:computeBoxHeight(tier,l.length,b.winLines?b.winLines.length:0,!!b.winsLabel)}); });
-    const total=wrapped.reduce((a,b)=>a+b.h,0);
-    return total <= treeH*0.96 ? wrapped : boxes;
-  }
-
-  function ancestorFields(anc, includeGC){
-    if(!anc || !anc.name) return null;
-    const l=[`Name: ${anc.name}`];
-    if(fields.ear && anc.earNumber) l.push(`Ear #: ${anc.earNumber}`);
-    if(fields.weight && anc.weight) l.push(`Weight: ${fmtWeight(anc.weight)}`);
-    if(fields.color && anc.color) l.push(`Color: ${anc.color}`);
-    if(fields.dob!==false && anc.dob) l.push(`DOB: ${fmtDate(anc.dob)}`);
-    if(fields.reg && anc.registrationNumber) l.push(`Reg #: ${anc.registrationNumber}`);
-    if(includeGC && fields.gc && anc.gcNumber) l.push(`GC #: ${anc.gcNumber}`);
-    if(anc.legsWins) l.push(`Legs: ${anc.legsWins}`);
-    return l;
-  }
-
-  // self
-  let selfLinesArr = ancestorFields(r, true) || [`Name: ${r.name}`];
-  { const w=wrapLinesFor('self', selfLinesArr), hh=computeBoxHeight('self', w.length, (r.wins||[]).slice(0,5).length, true); if(hh <= treeH*0.96) selfLinesArr=w; }
-  const selfWinLines = (r.wins||[]).slice(0,5).map(pedigreeWinLineText);
-  const selfBoxH = computeBoxHeight('self', selfLinesArr.length, selfWinLines.length, true);
-  const selfY = treeBottom + (treeH-selfBoxH)/2;
-  drawBox('self', col1X, selfY+selfBoxH, colW, 'GENERATION 1', selfLinesArr, selfWinLines.length?'SHOW WINS':null, selfWinLines);
-
-  // parents
-  const g = p => ancestorByPath(r.name, p);
-  const parentDefs = [ {label:'SIRE (FATHER)', anc:g('s')}, {label:'DAM (MOTHER)', anc:g('d')} ];
-  let parentBoxes = parentDefs.map(({label,anc})=>{
-    const lines = ancestorFields(anc, true) || ['Name: \u2014'];
-    const winLines = anc ? (anc.wins||[]).slice(0,2).map(pedigreeWinLineText) : [];
-    return { label, lines, winLines, h: computeBoxHeight('parent', lines.length, winLines.length, false) };
-  });
-  parentBoxes = wrapBoxes('parent', parentBoxes);
-  const pYs = pedigreeSpaceEvenly(parentBoxes.map(b=>b.h), treeH);
-  parentBoxes.forEach((b,i)=>drawBox('parent', col2X, treeTop-pYs[i], colW, b.label, b.lines, null, b.winLines));
-
-  // grandparents
-  const gpDefs = [
-    {label:'PATERNAL GRANDSIRE', anc:g('ss')}, {label:'PATERNAL GRANDDAM', anc:g('sd')},
-    {label:'MATERNAL GRANDSIRE', anc:g('ds')}, {label:'MATERNAL GRANDDAM', anc:g('dd')}
-  ];
-  let gpBoxes = gpDefs.map(({label,anc})=>{
-    const line1 = anc ? pedigreeFieldLine(anc, fields, true) : '';
-    const lines = anc ? [anc.name, line1, anc.legsWins?`Legs: ${anc.legsWins}`:''].filter(Boolean) : ['\u2014'];
-    const winLines = anc && anc.wins && anc.wins.length ? [pedigreeWinLineText(anc.wins[0])] : [];
-    return { label, lines, winLines, h: computeBoxHeight('grand', lines.length, winLines.length, false) };
-  });
-  gpBoxes = wrapBoxes('grand', gpBoxes);
-  const gpYs = pedigreeSpaceEvenly(gpBoxes.map(b=>b.h), treeH);
-  gpBoxes.forEach((b,i)=>drawBox('grand', col3X, treeTop-gpYs[i], colW, b.label, b.lines, null, b.winLines));
-
-  // great-grandparents
-  const ggPaths = ['sss','ssd','sds','sdd','dss','dsd','dds','ddd'];
-  const ggLabels = ['GG SIRE 1','GG DAM 1','GG SIRE 2','GG DAM 2','GG SIRE 3','GG DAM 3','GG SIRE 4','GG DAM 4'];
-  let ggBoxes = ggPaths.map((p,i)=>{
-    const anc = g(p);
-    const parts=[];
-    if(anc){
-      if(fields.ear && anc.earNumber) parts.push(anc.earNumber);
-      if(fields.weight && anc.weight) parts.push(fmtWeight(anc.weight));
-      if(fields.color && anc.color) parts.push(anc.color);
-      if(fields.dob!==false && anc.dob) parts.push(fmtDateShort(anc.dob));
-      if(fields.reg && anc.registrationNumber) parts.push('Reg '+anc.registrationNumber);
-      if(fields.gc && anc.gcNumber) parts.push('GC '+anc.gcNumber);
-      if(anc.legsWins) parts.push('Legs: '+anc.legsWins);
+      if(cur) wrapToWidth(cur,fonts.sans,t.bodySize,maxW).forEach(x=>lines.push(x));
+    } else {
+      spec.items.forEach(item=>wrapToWidth(item,fonts.sans,t.bodySize,maxW).forEach(x=>lines.push(x)));
     }
-    const lines = anc ? [anc.name, parts.join('  \u00b7  ')].filter(Boolean) : ['\u2014'];
-    return { label:ggLabels[i], lines, h: computeBoxHeight('great', lines.length, 0, false) };
-  });
-  ggBoxes = wrapBoxes('great', ggBoxes);
-  const ggYs = pedigreeSpaceEvenly(ggBoxes.map(b=>b.h), treeH);
-  ggBoxes.forEach((b,i)=>drawBox('great', col4X, treeTop-ggYs[i], colW, b.label, b.lines, null, null));
+    const winLines=[]; spec.wins.forEach(w=>wrapToWidth(w,fonts.sans,t.winSize,maxW).forEach(x=>winLines.push(x)));
+    if(earOnLine) lines.unshift('Ear # '+spec.ear);
+    const labelBlock = spec.label ? Math.max(t.labelSize, earSize)*1.25+2 : 0, nameLH = t.nameSize*1.08;
+    let h = t.pad + labelBlock + nameLines.length*nameLH + 1.5 + lines.length*t.lineH + t.pad*0.8;
+    if(winLines.length){ h += t.gapA + 0.5 + t.gapB + (spec.winLabel ? t.winSize*1.2+1.5 : 0) + winLines.length*t.winLineH; }
+    return { spec, t, nameLines, lines, winLines, labelBlock, nameLH, earSize, earW, earOnLine, h };
+  }
+  function layoutColumn(specs, sMax){
+    let s=sMax, cards=null;
+    for(; s>=0.5; s-=0.04){
+      cards = specs.map(sp=>layoutCard(sp,s));
+      const total = cards.reduce((a,c)=>a+c.h,0);
+      if(total + (cards.length+1)*MIN_GAP <= treeH) break;
+    }
+    return { cards, ys: pedigreeSpaceEvenly(cards.map(c=>c.h), treeH) };
+  }
+  function drawCard(col, card, yTop, isSelf){
+    const x=colXs[col], w=colW, t=card.t, h=card.h;
+    const fill = isSelf ? hexToRgb(accentHex) : white;
+    page.drawSvgPath(roundRectPath(w,h,t.radius), { x, y:yTop, color:fill, borderColor: isSelf?hexToRgb(accentHex):cardBorder, borderWidth: isSelf?0.5:0.6, opacity: (usingBackground&&!isSelf)?0.9:1 });
+    const nameC = isSelf?onAccent:ink, softC = isSelf?onAccent:inkSoft, lblC = isSelf?onAccent:labelGray;
+    let cy = yTop - t.pad;
+    const rowH = Math.max(t.labelSize, card.earSize), baseY = cy-rowH*0.82;
+    if(card.spec.label) page.drawText(card.spec.label, { x:x+t.pad, y:baseY, size:t.labelSize, font:fonts.sans, color:lblC, opacity: isSelf?0.75:1 });
+    if(card.spec.ear && !card.earOnLine){
+      const ex = x+w-t.pad-card.earW, preW = textWidth('EAR ', fonts.sans, t.labelSize);
+      page.drawText('EAR', { x:ex, y:baseY, size:t.labelSize, font:fonts.sans, color:lblC, opacity: isSelf?0.75:1 });
+      page.drawText(card.spec.ear, { x:ex+preW, y:baseY, size:card.earSize, font:fonts.sansBold, color:nameC });
+    }
+    cy -= card.labelBlock;
+    card.nameLines.forEach(l=>{ drawText(l, x+t.pad, cy, fonts.serifBold, t.nameSize, nameC); cy -= card.nameLH; });
+    cy -= 1.5;
+    card.lines.forEach(l=>{ drawText(l, x+t.pad, cy, fonts.sans, t.bodySize, isSelf?onAccent:ink); cy -= t.lineH; });
+    if(card.winLines.length){
+      cy -= t.gapA;
+      page.drawLine({ start:{x:x+t.pad,y:cy}, end:{x:x+w-t.pad,y:cy}, thickness:0.5, color: isSelf?onAccent:accent, opacity: isSelf?0.6:1 });
+      cy -= t.gapB;
+      if(card.spec.winLabel){ drawText('SHOW WINS', x+t.pad, cy, fonts.monoBold, t.winSize*0.86, isSelf?onAccent:accent); cy -= t.winSize*1.2+1.5; }
+      card.winLines.forEach(l=>{ drawText(l, x+t.pad, cy, fonts.sans, t.winSize, softC); cy -= t.winLineH; });
+    }
+  }
+  const g = p => ancestorByPath(r.name, p);
+  const colSpecs = [
+    [ specFor(r, '', 'self', 5, true) ],
+    [ specFor(g('s'), 'SIRE (FATHER)', 'parent', 2), specFor(g('d'), 'DAM (MOTHER)', 'parent', 2) ],
+    [ specFor(g('ss'),'PATERNAL GRANDSIRE','grand',1), specFor(g('sd'),'PATERNAL GRANDDAM','grand',1), specFor(g('ds'),'MATERNAL GRANDSIRE','grand',1), specFor(g('dd'),'MATERNAL GRANDDAM','grand',1) ],
+    ['sss','ssd','sds','sdd','dss','dsd','dds','ddd'].map((p,i)=>specFor(g(p), (i%2?'GG DAM ':'GG SIRE ')+(Math.floor(i/2)+1), 'great', 0))
+  ];
+  // text grows a little when a column has spare room, and shrinks when it doesn't
+  const cols = colSpecs.map((c,i)=>layoutColumn(c,[1,1.15,1.3,1.3][i]));
+  const rects = cols.map((c,ci)=>c.cards.map((card,i)=>({ x:colXs[ci], w:colW, yTop:treeTop-c.ys[i], h:card.h })));
+  // bracket connectors from each card to its two parents, drawn first so the cards sit on top
+  const bracket = (from, a, b)=>{
+    const x1=from.x+from.w, x2=a.x, mx=x1+(x2-x1)/2, yc=from.yTop-from.h/2, ya=a.yTop-a.h/2, yb=b.yTop-b.h/2;
+    const L=(sx,sy,ex,ey)=>page.drawLine({ start:{x:sx,y:sy}, end:{x:ex,y:ey}, thickness:0.8, color:connGray });
+    L(x1,yc,mx,yc); L(mx,ya,mx,yb); L(mx,ya,x2,ya); L(mx,yb,x2,yb);
+  };
+  bracket(rects[0][0], rects[1][0], rects[1][1]);
+  bracket(rects[1][0], rects[2][0], rects[2][1]); bracket(rects[1][1], rects[2][2], rects[2][3]);
+  for(let i=0;i<4;i++) bracket(rects[2][i], rects[3][i*2], rects[3][i*2+1]);
+  cols.forEach((c,ci)=>c.cards.forEach((card,i)=>drawCard(ci, card, rects[ci][i].yTop, ci===0)));
 
   return pdfDoc.save();
 }
@@ -9856,6 +9869,8 @@ async function commitCsvImport(){
         if(!row.data[k]) return;
         // Pedigree imports guess a herd status for every row; never let that overwrite an existing rabbit's real status.
         if(k==='status' && row.isSelf!==undefined) return;
+        // An assumed breed (PDF left it blank) never replaces a breed the rabbit already has.
+        if(k==='breed' && row.breedAssumed && ex.breed) return;
         if(k==='notes'){
           // Import "notes" is really just an auto-generated tag (e.g.
           // "GC #: 12345"), not free text the person wrote themselves
@@ -9956,6 +9971,19 @@ function pdfLinesFromItems(items){
   }
   lines.sort((a,b)=>a.top-b.top);
   return lines.map(l=>l.parts.sort((a,b)=>a.x-b.x).map(p=>p.str).join(' ').replace(/\s+/g,' ').trim());
+}
+// like pdfLinesFromItems, but each line also carries its text size (h) so a name can be told apart from the details under it
+function pdfLinesWithSize(items){
+  const lines = [];
+  const sorted = items.slice().sort((a,b)=>a.top-b.top||a.x-b.x);
+  for(const it of sorted){
+    if(!it.str.trim()) continue;
+    let line = lines.find(l=>Math.abs(l.top-it.top)<3);
+    if(!line){ line={top:it.top, parts:[], h:0}; lines.push(line); }
+    line.parts.push(it); line.h = Math.max(line.h, it.h||0);
+  }
+  lines.sort((a,b)=>a.top-b.top);
+  return lines.map(l=>({ t:l.parts.sort((a,b)=>a.x-b.x).map(p=>p.str).join(' ').replace(/\s+/g,' ').trim(), h:l.h }));
 }
 function pdfParseWeight(s){
   if(!s) return '';
@@ -10526,15 +10554,24 @@ function parseHerdNerdPedigreePdf(items, viewport){
   const byTop = all.slice().sort((a,b)=>a.top-b.top||a.x-b.x);
   byTop.forEach((it,i)=>{
     const s=T(it.str); let role=null;
-    if(/^GENERATION$/i.test(s)) role='SELF';
+    if(/^GENERATION(\s*1)?$/i.test(s)) role='SELF';
     else if(/^SIRE\s*\(FATHER\)$/i.test(s)) role='SIRE';
     else if(/^DAM\s*\(MOTHER\)$/i.test(s)) role='DAM';
     else if(/^(PATERNAL|MATERNAL)$/i.test(s)){
       const nx = all.find(o=>o!==it && Math.abs(o.top-it.top)<2 && o.x>it.x && o.x-it.x<60 && /^GRAND(SIRE|DAM)$/i.test(T(o.str)));
       if(nx) role = (/^PAT/i.test(s)?'P':'M')+'G'+(/SIRE/i.test(nx.str)?'S':'D');
+    } else if(/^(PATERNAL|MATERNAL)\s+GRAND(SIRE|DAM)$/i.test(s)){
+      const m2=s.match(/^(PATERNAL|MATERNAL)\s+GRAND(SIRE|DAM)$/i); role = (/^PAT/i.test(m2[1])?'P':'M')+'G'+(/SIRE/i.test(m2[2])?'S':'D');
     } else { const m=s.match(/^GG\s*(SIRE|DAM)\s*(\d)$/i); if(m) role='GG'+m[1].toUpperCase()+m[2]; }
     if(role) anchors.push({role, x:it.x, top:it.top});
   });
+  // lowest point a card can reach: higher when the signature footer is on the page, lower when it isn't
+  const capTop = all.some(it=>/hereby certify/i.test(it.str)) ? 515 : 565;
+  // the main rabbit's card has no label any more: its first line of text (below the page header) marks where it starts
+  if(!anchors.some(a=>a.role==='SELF')){
+    const firstSelf = all.filter(it=>it.x<200 && it.top>100 && it.top<capTop).sort((a,b)=>a.top-b.top||a.x-b.x)[0];
+    if(firstSelf) anchors.push({role:'SELF', x:firstSelf.x, top:firstSelf.top-8});
+  }
   const colOf = r => r==='SELF'?0 : (r==='SIRE'||r==='DAM')?1 : /^[PM]G[SD]$/.test(r)?2 : 3;
   const colX = x => x<200?0 : x<400?1 : x<590?2 : 3;
   const slots = {};
@@ -10542,15 +10579,27 @@ function parseHerdNerdPedigreePdf(items, viewport){
     const col=colOf(a.role);
     const below = anchors.filter(b=>colOf(b.role)===col && b.top>a.top+4).map(b=>b.top);
     // boxes in the grandparent column have a two-word ribbon, so the next ribbon in the column ends this box
-    const limit = Math.min(below.length?Math.min.apply(null,below)-2:520, 520);
+    const limit = Math.min(below.length?Math.min.apply(null,below)-2:capTop, capTop);
     const boxItems = all.filter(it=>colX(it.x)===col && it.top>a.top+4 && it.top<limit);
-    slots[a.role] = hnParseBox(pdfLinesFromItems(boxItems), a.role);
+    slots[a.role] = hnParseBox(pdfLinesWithSize(boxItems), a.role);
+    // newer pedigrees print "EAR <number>" in the card's top-right corner, on the same row as the label
+    if(slots[a.role] && !slots[a.role].earNumber){
+      const row = all.filter(it=>colX(it.x)===col && Math.abs(it.top-a.top)<3 && it.x>a.x+2).sort((p,q)=>p.x-q.x);
+      const mi = row.findIndex(it=>/^EAR(\s|$)/.test(T(it.str)));
+      if(mi>=0){
+        const first = T(row[mi].str).replace(/^EAR\s*/,'');
+        const ear = [first].concat(row.slice(mi+1).map(it=>T(it.str))).join(' ').trim();
+        if(ear && ear!=='-' ) slots[a.role].earNumber = ear;
+      }
+    }
   });
   if(!slots.SELF || !slots.SELF.name) return { ok:false, error:"Couldn't find the main rabbit's details on this HerdNerd pedigree." };
   // header: sex, birth date, breed
   const head = all.filter(it=>it.top<110).map(it=>T(it.str));
   const sexH = head.map(h=>h.match(/^Sex:\s*(Buck|Doe)/i)).find(Boolean);
   slots.SELF.sex = sexH ? sexH[1].toLowerCase() : (slots.SELF.sex||'doe');
+  const earH = head.map(h=>h.match(/^Ear\s*#:\s*(.+)$/i)).find(Boolean);
+  if(earH && !slots.SELF.earNumber) slots.SELF.earNumber = earH[1].trim();
   const dobH = head.map(h=>h.match(/^Date of Birth:\s*(.+)$/i)).find(Boolean);
   if(dobH && !slots.SELF.dob) slots.SELF.dob = csvParseDate(dobH[1]) || pdfParseDob(dobH[1]);
   const brH = head.map(h=>h.match(/^Breed:\s*(.+)$/i)).find(Boolean);
@@ -10570,11 +10619,36 @@ function parseHerdNerdPedigreePdf(items, viewport){
   return { ok:true, rows };
 }
 function hnParseBox(lines, role){
+  const L = lines.map(l=> typeof l==='string' ? {t:l,h:0} : l);
+  lines = L.map(l=>l.t);
   if(!lines.length) return null;
   const d = { name:'', color:'', earNumber:'', registrationNumber:'', weight:'', legsWins:'', dob:null, gc:'', breed:'' };
   const date = s => csvParseDate(s) || pdfParseDob(s);
   const wt = s => { const m=String(s||'').match(/[\d.]+/); return m?m[0]:''; };
   const dash = s => { s=String(s||'').trim(); return (s==='-'||s==='—')?'':s; };
+  // newer pedigrees: the name is set in larger type, then the color, then "Ear # x", "DOB x" ... (smaller lines under show wins are skipped)
+  const nameH = L[0].h;
+  if(nameH>0 && !/^Name:/i.test(lines[0]) && L.some(l=>l.h>0 && l.h < nameH-0.9)){
+    let i=0; const nameParts=[];
+    while(i<L.length && L[i].h >= nameH-0.3){ nameParts.push(L[i].t); i++; }
+    d.name = nameParts.join(' ').replace(/…$/,'').trim();
+    if(/^[\u2014-]+$/.test(d.name)) return null;
+    const rest = L.slice(i);
+    const bodyH = rest.length ? rest[0].h : 0;
+    const raw = {}; let last='color';
+    const fieldRe = /^(Ear\s*#|Weight|DOB|Reg\s*#|GC\s*#|Legs)\s*:?\s*(.*)$/i;
+    rest.forEach(l=>{
+      if(l.h < bodyH-0.25) return;
+      l.t.split(/\s+\u00b7\s+/).forEach(seg=>{
+        const m = seg.match(fieldRe);
+        if(m){ last=m[1].toLowerCase().replace(/[\s#]/g,''); raw[last]=(raw[last]?raw[last]+' ':'')+m[2]; }
+        else raw[last]=(raw[last]?raw[last]+' ':'')+seg;
+      });
+    });
+    d.color=dash(raw.color); d.earNumber=dash(raw.ear); d.weight=wt(dash(raw.weight)); d.dob=raw.dob?date(raw.dob):null;
+    d.registrationNumber=dash(raw.reg); d.gc=dash(raw.gc); d.legsWins=dash(raw.legs);
+    return d;
+  }
   if(/^Name:/i.test(lines[0])){
     // parents and the main rabbit: one labelled field per line; a long name or color can wrap onto the next line
     let last=null;
@@ -10590,6 +10664,7 @@ function hnParseBox(lines, role){
       } else if(/SHOW WINS/i.test(line)) last=null;
     }
     d.name=d.name.replace(/…$/,'').trim();
+    if(/^[\u2014-]+$/.test(d.name)) return null;
     return d;
   }
   // grandparents and great-grandparents: a name line, then "EAR · weight · color · date · Reg x · GC x · Legs: x"
@@ -10623,7 +10698,7 @@ async function parsePedigreePdf(arrayBuffer){
   const viewport = page.getViewport({ scale: 1 });
   const textContent = await page.getTextContent();
   const items = textContent.items
-    .map(it => ({ str: it.str, x: it.transform[4], top: viewport.height - it.transform[5] }))
+    .map(it => ({ str: it.str, x: it.transform[4], top: viewport.height - it.transform[5], h: Math.abs(it.transform[3]) || it.height || 0 }))
     .filter(it => it.str.trim());
 
   const fullText = items.map(i=>i.str).join(' ');
@@ -10643,7 +10718,7 @@ async function parsePedigreePdf(arrayBuffer){
     if(Math.abs(viewport.width-612)<15 && Math.abs(viewport.height-792)<15) return parseWhosDueVariant2PedigreePdf(items, viewport);
     return parseWhosDuePedigreePdf(items, viewport);
   }
-  if(/GENERATION\s*1/.test(fullText) && /GG\s*SIRE\s*1/.test(fullText) && /PEDIGREE/.test(fullText)) return parseHerdNerdPedigreePdf(items, viewport);
+  if(/GG\s*SIRE\s*1/.test(fullText) && /SIRE\s*\(FATHER\)/.test(fullText) && /PEDIGREE/i.test(fullText)) return parseHerdNerdPedigreePdf(items, viewport);
   if(!/Rabbit Register/i.test(fullText)){
     return { ok:false, error:"This doesn't look like a supported pedigree PDF — this importer currently understands Rabbit Register (Evans Software), Everbreed, Who's Due and HerdNerd pedigree exports." };
   }
@@ -10967,6 +11042,13 @@ function mergePedigreeBatchRows(allRows){
 }
 function renderPedigreeBatchPreview(fileReports){
   const area = document.getElementById('csvPreviewArea');
+  // Any rabbit the PDF gave no breed for is assumed to be the main rabbit's breed (editable per rabbit, or all at once)
+  if(!csvImportRows._breedInit){
+    csvImportRows._breedInit = true;
+    const selfRow = csvImportRows.find(r=>r.isSelf && r.data.breed) || csvImportRows.find(r=>r.data.breed);
+    csvImportRows._defaultBreed = selfRow ? selfRow.data.breed : '';
+    csvImportRows.forEach(r=>{ if(!r.data.breed && csvImportRows._defaultBreed){ r.data.breed = csvImportRows._defaultBreed; r.breedAssumed = true; } });
+  }
   const total = csvImportRows.length;
   const matches = csvImportRows.filter(r=>r.existing);
   const newCount = total - matches.length;
@@ -10977,6 +11059,7 @@ function renderPedigreeBatchPreview(fileReports){
       <div class="card-top"><div>
         <div class="card-name" style="font-size:14px;">${esc(d.name)}${row.seenIn>1?` <span style="font-weight:400; opacity:.6; font-size:11px;">(in ${row.seenIn} pedigrees)</span>`:''}</div>
         <div class="card-sub">${detailBits||'<span style="opacity:.6;">No details on this one besides its name</span>'}</div>
+        <div style="display:flex; align-items:center; gap:6px; margin-top:6px;"><span style="font-size:12px; opacity:.7;">Breed${row.breedAssumed?' (assumed)':''}</span><input type="text" data-pedbreed="${i}" value="${esc(d.breed||'')}" placeholder="Breed" style="flex:1; min-width:0; height:34px;"></div>
         ${row.existing?`<div class="card-sub" style="margin-top:2px;">Matches existing rabbit · ${esc(row.existing.status)}</div>`:''}
       </div></div>
       <div class="seg" style="margin-top:8px;" data-pedbatchrow="${i}">
@@ -10995,6 +11078,7 @@ function renderPedigreeBatchPreview(fileReports){
       <button class="btn btn-secondary btn-sm" id="pedBatchSkipAll">Skip all matches</button>
       <button class="btn btn-secondary btn-sm" id="pedBatchUpdateAll">Update all matches</button>
     </div>
+    <div class="field"><label>Breed for every rabbit the PDF left blank (you can change any one below)</label><input type="text" id="pedBatchBreed" value="${esc(csvImportRows._defaultBreed||'')}" placeholder="e.g. Holland Lop"></div>
     <div class="field"><input type="text" id="pedBatchFilter" placeholder="Filter by name…"></div>
     <div id="pedBatchRows" style="max-height:50vh; overflow-y:auto; margin-top:8px;">${csvImportRows.map(rowHTML).join('')}</div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="pedBatchImportBtn">Import ${total}</button></div>`;
@@ -11006,6 +11090,13 @@ function renderPedigreeBatchPreview(fileReports){
     });
   });
   document.querySelectorAll('[data-pedherd]').forEach(cb=>cb.onchange=()=>{ csvImportRows[+cb.dataset.pedherd].isSelf = cb.checked; });
+  document.querySelectorAll('[data-pedbreed]').forEach(inp=>inp.onchange=()=>{ const r=csvImportRows[+inp.dataset.pedbreed]; r.data.breed = canonicalizeBreed(inp.value.trim()); r.breedAssumed = false; inp.value = r.data.breed; });
+  document.getElementById('pedBatchBreed').onchange = (e)=>{
+    const nb = canonicalizeBreed(e.target.value.trim());
+    csvImportRows._defaultBreed = nb;
+    csvImportRows.forEach(r=>{ if(r.breedAssumed || !r.data.breed){ r.data.breed = nb; r.breedAssumed = !!nb; } });
+    renderPedigreeBatchPreview(fileReports);
+  };
   document.getElementById('pedBatchSkipAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='skip'; }); renderPedigreeBatchPreview(fileReports); };
   document.getElementById('pedBatchUpdateAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='update'; }); renderPedigreeBatchPreview(fileReports); };
   document.getElementById('pedBatchFilter').oninput = (e)=>{
