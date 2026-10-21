@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-zoomprev';
+const APP_VERSION = '2026-10-20-pednext';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -6665,12 +6665,12 @@ function pedFieldParts(n,isSelf){
 function pedFieldLines(n,isSelf){ const x=pedFieldParts(n,isSelf); return x.facts.concat(x.extra); }
 function pedBox(node,path,role){
   const label = role?`<div class="pc" style="opacity:.6; text-transform:uppercase; font-size:9px; letter-spacing:.04em;">${role}</div>`:'';
-  if(!node||!node.name) return `<div class="ped-box unknown" data-pedpath="${path}">${label}<div class="pn">+ Add name</div></div>`;
+  if(!node||!node.name) return `<div class="ped-box unknown" data-pedpath="${path}" data-pedat="${path}">${label}<div class="pn">+ Add name</div></div>`;
   if(pedWide()){
     const ls=pedFieldLines(node);
-    return `<div class="ped-box ${node.external?'unknown':''}" data-pedname="${esc(node.name)}">${label}<div class="pn">${esc(node.name)}</div>${ls.map(x=>`<div class="pc">${esc(x)}</div>`).join('')}</div>`;
+    return `<div class="ped-box ${node.external?'unknown':''}" data-pedname="${esc(node.name)}" data-pedat="${path}">${label}<div class="pn">${esc(node.name)}</div>${ls.map(x=>`<div class="pc">${esc(x)}</div>`).join('')}</div>`;
   }
-  return `<div class="ped-box ${node.external?'unknown':''}" data-pedname="${esc(node.name)}">${label}<div class="pn">${esc(node.name)}</div>${node.color?`<div class="pc">${esc(node.color)}</div>`:''}</div>`;
+  return `<div class="ped-box ${node.external?'unknown':''}" data-pedname="${esc(node.name)}" data-pedat="${path}">${label}<div class="pn">${esc(node.name)}</div>${node.color?`<div class="pc">${esc(node.color)}</div>`:''}</div>`;
 }
 function historyEntryHTML(damObj, e){
   const cls = e.outcome==='litter'?'took':e.outcome==='lost'?'lost':'pending';
@@ -6759,15 +6759,15 @@ function openAncestorSheet(anc, origin){
   };
   document.getElementById('f-adelete').onclick=(e)=>{ armConfirm(e.target, 'Tap again to confirm', async ()=>{ if(!(await moveToTrash(anc))){ showToast('Could not delete — check your connection and try again'); return; } rabbits=rabbits.filter(x=>x.id!==anc.id); saveData(); done(origin); }); };
 }
-const pedOpen = new Set();
+const pedOpen = new Set();   // great-grandparent groups the person has closed; everything else starts open
 function pedNestRow(node,path,role){
-  if(!node||!node.name) return `<div class="pdn-row unknown" data-pedpath="${path}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">+ Add name</div></div></div>`;
-  return `<div class="pdn-row ${node.external?'anc':''}" data-pedname="${esc(node.name)}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">${esc(node.name)}</div>${(()=>{ const x=pedFieldParts(node); return (x.facts.length?`<div class="pc">${esc(x.facts.join(' \u00b7 '))}</div>`:'')+x.extra.map(l=>`<div class="pc">${esc(l)}</div>`).join(''); })()}</div></div>`;
+  if(!node||!node.name) return `<div class="pdn-row unknown" data-pedpath="${path}" data-pedat="${path}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">+ Add name</div></div></div>`;
+  return `<div class="pdn-row ${node.external?'anc':''}" data-pedname="${esc(node.name)}" data-pedat="${path}"><div class="pdn-role">${role}</div><div class="pdn-grow"><div class="pn">${esc(node.name)}</div>${(()=>{ const x=pedFieldParts(node); return (x.facts.length?`<div class="pc">${esc(x.facts.join(' \u00b7 '))}</div>`:'')+x.extra.map(l=>`<div class="pc">${esc(l)}</div>`).join(''); })()}</div></div>`;
 }
 function pedNestHTML(r){
   const g=p=>ancestorByPath(r.name,p);
   const more=(parentPath,caption,a,b,pa,pb)=>{
-    const key=r.id+':'+parentPath, open=pedOpen.has(key);
+    const key=r.id+':'+parentPath, open=!pedOpen.has(key);
     const n=(g(pa)&&g(pa).name?1:0)+(g(pb)&&g(pb).name?1:0);
     return `<button type="button" class="pdn-tg" data-pedtg="${key}"><span>${caption}</span><span>${n}/2 <b>${open?'▾':'›'}</b></span></button>
       <div class="pdn-nest pdn-more ${open?'on':''}">${pedNestRow(g(pa),pa,'Sire')}${pedNestRow(g(pb),pb,'Dam')}</div>`;
@@ -6782,7 +6782,7 @@ document.addEventListener('click',e=>{
   const t=e.target.closest&&e.target.closest('[data-pedtg]'); if(!t) return;
   const key=t.dataset.pedtg, block=t.nextElementSibling; if(!block) return;
   const on=!block.classList.contains('on'); block.classList.toggle('on',on);
-  if(on) pedOpen.add(key); else pedOpen.delete(key);
+  if(on) pedOpen.delete(key); else pedOpen.add(key);
   const b=t.querySelector('b'); if(b) b.textContent=on?'▾':'›';
 });
 function pedigreeTreeHTML(r){
@@ -6839,17 +6839,58 @@ function pedExtraButtons(anc, back){
   document.getElementById('pedOpenProf').onclick=()=>{ closeSheet(); openRabbitProfile(anc); };
   document.getElementById('pedShowPed').onclick=()=>{ closeSheet(); openRabbitProfile(anc,'pedigree'); };
 }
+// Previous / Next inside the edit panel: saves what you typed, closes, and opens the next rabbit in the order you read the pedigree
+// (the order the boxes appear on screen: top to bottom on a phone, left to right then top to bottom on a computer)
+function pedVisibleSlots(){
+  return Array.from(document.querySelectorAll('[data-pedat]')).filter(el=>el.offsetParent!==null);
+}
+function pedSlotUsable(el){
+  if(el.hasAttribute('data-pedname')) return true;
+  const path=el.dataset.pedat, pp=path.slice(0,-1);
+  if(pp==='') return true;
+  const parentEl=document.querySelector('[data-pedat="'+pp+'"]');
+  return !!(parentEl && parentEl.hasAttribute('data-pedname'));
+}
+function pedNeighbor(path, dir){
+  const slots=pedVisibleSlots(); const i=slots.findIndex(el=>el.dataset.pedat===path);
+  if(i<0) return null;
+  for(let j=i+dir; j>=0 && j<slots.length; j+=dir){ if(pedSlotUsable(slots[j])) return slots[j]; }
+  return null;
+}
+async function pedAdvance(path, dir){
+  const nameQ=document.getElementById('f-qn');
+  if(nameQ && !nameQ.value.trim()){ const c=document.getElementById('f-cancel'); if(c) c.click(); }   // blank slot, nothing typed: just move on
+  else { const sv=document.getElementById('f-save'); if(!sv) return; sv.click(); }
+  const bd=document.getElementById('sheetBackdrop');
+  for(let t=0; t<80 && bd.classList.contains('on'); t++) await new Promise(r=>setTimeout(r,60));
+  if(bd.classList.contains('on')) return;          // a question or a failed save is still open: stay put, nothing is skipped
+  await new Promise(r=>setTimeout(r,30));
+  const nx=pedNeighbor(path, dir);
+  if(nx){ try{ nx.scrollIntoView({block:'nearest'}); }catch(e){} nx.click(); }
+  else showToast(dir>0 ? 'That was the last one' : 'That was the first one');
+}
+function pedNavButtons(path){
+  const bar=document.querySelector('#sheet .sheet-actions'); if(!bar || !path) return;
+  const hasPrev=!!pedNeighbor(path,-1), hasNext=!!pedNeighbor(path,1);
+  if(!hasPrev && !hasNext) return;
+  const row=document.createElement('div'); row.className='sheet-actions'; row.style.cssText='margin-top:8px;';
+  row.innerHTML=(hasPrev?'<button type="button" class="btn btn-secondary" style="flex:1;" id="pedPrev">&lsaquo; Save &amp; previous</button>':'')+(hasNext?'<button type="button" class="btn btn-secondary" style="flex:1;" id="pedNext">Save &amp; next &rsaquo;</button>':'');
+  bar.parentNode.insertBefore(row, bar.nextSibling);
+  const pv=document.getElementById('pedPrev'), nx=document.getElementById('pedNext');
+  if(pv) pv.onclick=()=>pedAdvance(path,-1);
+  if(nx) nx.onclick=()=>pedAdvance(path,1);
+}
 function wirePedigreeTaps(container, r, back){
   container.querySelectorAll('[data-pedname]').forEach(b=>b.onclick=()=>{
     const anc=findByName(b.dataset.pedname); if(!anc) return;
-    openEditSheet(anc,back,{lean:true}); pedExtraButtons(anc,back);
+    openEditSheet(anc,back,{lean:true}); pedExtraButtons(anc,back); pedNavButtons(b.dataset.pedat);
     pedDockOn(b);
   });
   container.querySelectorAll('[data-pedpath]').forEach(b=>b.onclick=()=>{
     const path=b.dataset.pedpath, rel=path.slice(-1), pp=path.slice(0,-1);
     const parent = pp===''?r:ancestorByPath(r.name,pp);
     if(!parent||!parent.name){ showToast('Fill in the closer generation first'); return; }
-    openQuickNameSheet(ensureAncestor(parent.name), rel, back);
+    openQuickNameSheet(ensureAncestor(parent.name), rel, back); pedNavButtons(b.dataset.pedat);
     pedDockOn(b);
   });
 }
