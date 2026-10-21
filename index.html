@@ -442,7 +442,7 @@
   .pdn-row .pn{ font-family:'Cormorant Garamond',serif; font-weight:700; font-size:16.5px; color:var(--navy); line-height:1.15; }
   .pdn-row .pc{ font-size:12px; color:var(--ink-soft); margin-top:2px; }
   .pdn-grow{ flex:1; min-width:0; }
-  .pdn-nest{ margin:6px 0 0 12px; padding-left:10px; border-left:2px solid var(--line-strong); display:flex; flex-direction:column; gap:6px; }
+  .pdn-nest{ margin:6px 0 0 14px; padding-left:12px; border-left:2px solid var(--line-strong); display:flex; flex-direction:column; gap:6px; }
   .pdn-tg{ display:flex; align-items:center; justify-content:space-between; width:100%; box-sizing:border-box; margin-top:6px; padding:7px 12px; background:transparent; border:1px dashed var(--line-strong); border-radius:10px; font-family:'Public Sans',sans-serif; font-size:12.5px; font-style:italic; color:var(--ink-soft); cursor:pointer; text-align:left; }
   .pdn-tg b{ font-style:normal; font-weight:600; color:var(--gold-deep); font-size:15px; }
   .pdn-more{ display:none; }
@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-navclean';
+const APP_VERSION = '2026-10-20-nosidelabel';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -6766,14 +6766,10 @@ function pedNestRow(node,path,role){
 }
 function pedNestHTML(r){
   const g=p=>ancestorByPath(r.name,p);
-  const more=(parentPath,caption,a,b,pa,pb)=>{
-    const key=r.id+':'+parentPath, open=!pedOpen.has(key);
-    const n=(g(pa)&&g(pa).name?1:0)+(g(pb)&&g(pb).name?1:0);
-    return `<button type="button" class="pdn-tg" data-pedtg="${key}"><span>${caption}</span><span>${n}/2 <b>${open?'▾':'›'}</b></span></button>
-      <div class="pdn-nest pdn-more ${open?'on':''}">${pedNestRow(g(pa),pa,'Sire')}${pedNestRow(g(pb),pb,'Dam')}</div>`;
-  };
+  // great-grandparents sit right under their grandparent, one step further in, each labelled as what they are
+  const more=(parentPath,caption,a,b,pa,pb)=>`<div class="pdn-nest pdn-more on pdn-deep">${pedNestRow(g(pa),pa,'Great-<br>grandsire')}${pedNestRow(g(pb),pb,'Great-<br>granddam')}</div>`;
   const side=(p,pc,gs,gd,lbl)=>`${pedNestRow(g(p),p,pc)}
-    <div class="pdn-nest"><div class="ped-side-label" style="margin:2px 0 0;">GRANDPARENTS · ${lbl}</div>
+    <div class="pdn-nest">
       <div>${pedNestRow(g(p+'s'),p+'s','Grandsire')}${more(p+'s',"Grandsire's parents",0,0,p+'ss',p+'sd')}</div>
       <div>${pedNestRow(g(p+'d'),p+'d','Granddam')}${more(p+'d',"Granddam's parents",0,0,p+'ds',p+'dd')}</div></div>`;
   return `<div class="ped-gen"><div class="ped-gen-label">PARENTS</div>${side('s','Sire',0,0,"SIRE'S SIDE")}<div style="height:12px"></div>${side('d','Dam',0,0,"DAM'S SIDE")}</div>`;
