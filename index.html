@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-pednext';
+const APP_VERSION = '2026-10-20-unzoom';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -7711,23 +7711,6 @@ async function renderPedigreePreviewCanvas(bytes){
   const drawW = full.width*scale, drawH = full.height*scale;
   const dx = (visible.width-drawW)/2, dy = (visible.height-drawH)/2;
   ctx.drawImage(full, 0, 0, full.width, full.height, dx, dy, drawW, drawH);
-  window._pedPreviewFull = full;            // kept so a tap can open it big
-  visible.style.cursor = 'zoom-in';
-  visible.onclick = openPedigreeZoom;
-}
-// Tap the small preview to see the whole page big: scroll or pinch around to read the small great-grandparent cards
-function openPedigreeZoom(){
-  const full = window._pedPreviewFull; if(!full) return;
-  const old = document.getElementById('pedZoomOv'); if(old) old.remove();
-  const ov = document.createElement('div'); ov.id='pedZoomOv';
-  ov.style.cssText = 'position:fixed; inset:0; z-index:100000; background:#6b6e70; overflow:auto; -webkit-overflow-scrolling:touch;';
-  const c = document.createElement('canvas'); c.width=full.width; c.height=full.height;
-  c.getContext('2d').drawImage(full,0,0);
-  c.style.cssText = 'display:block; width:1500px; height:auto; background:#fff; margin:64px 12px 24px;';
-  const x = document.createElement('button'); x.type='button'; x.textContent='Close';
-  x.style.cssText = 'position:fixed; top:10px; left:10px; z-index:100001; height:44px; padding:0 20px; border-radius:22px; border:0; background:#fff; color:#2a1a2e; font:700 14px "Public Sans",sans-serif; box-shadow:0 1px 4px rgba(0,0,0,.3);';
-  x.onclick = ()=>ov.remove();
-  ov.appendChild(c); ov.appendChild(x); document.body.appendChild(ov);
 }
 /* ---------------- LIVE PEDIGREE PREVIEW ----------------
    Shown whenever "Download Official Pedigree PDF" is tapped for an
@@ -7753,8 +7736,7 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       <div style="border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; margin-bottom:6px; background:#6b6e70;">
         <canvas id="ped-preview-canvas" style="width:100%; height:320px; display:block; background:#fff;"></canvas>
       </div>
-      <div id="ped-preview-status" class="card-sub" style="margin-bottom:4px; min-height:16px;">Loading preview&hellip;</div>
-      <div class="card-sub" style="margin-bottom:12px;">Tap the preview to see it full size.</div>
+      <div id="ped-preview-status" class="card-sub" style="margin-bottom:12px; min-height:16px;">Loading preview&hellip;</div>
       <div class="card-sub" style="margin:-6px 0 12px;">Pedigree customization settings are under More &rarr; Pedigree settings.</div>
       ${hasCustomBackground?`<div class="field"><label>Background</label>
         <div class="seg" id="pp-bg-choice">
