@@ -2612,7 +2612,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-20-unzoom';
+const APP_VERSION = '2026-10-20-navclean';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -6865,20 +6865,29 @@ async function pedAdvance(path, dir){
   for(let t=0; t<80 && bd.classList.contains('on'); t++) await new Promise(r=>setTimeout(r,60));
   if(bd.classList.contains('on')) return;          // a question or a failed save is still open: stay put, nothing is skipped
   await new Promise(r=>setTimeout(r,30));
+  if(dir===0) return;      // Close: saved and closed
   const nx=pedNeighbor(path, dir);
   if(nx){ try{ nx.scrollIntoView({block:'nearest'}); }catch(e){} nx.click(); }
-  else showToast(dir>0 ? 'That was the last one' : 'That was the first one');
 }
 function pedNavButtons(path){
-  const bar=document.querySelector('#sheet .sheet-actions'); if(!bar || !path) return;
-  const hasPrev=!!pedNeighbor(path,-1), hasNext=!!pedNeighbor(path,1);
-  if(!hasPrev && !hasNext) return;
-  const row=document.createElement('div'); row.className='sheet-actions'; row.style.cssText='margin-top:8px;';
-  row.innerHTML=(hasPrev?'<button type="button" class="btn btn-secondary" style="flex:1;" id="pedPrev">&lsaquo; Save &amp; previous</button>':'')+(hasNext?'<button type="button" class="btn btn-secondary" style="flex:1;" id="pedNext">Save &amp; next &rsaquo;</button>':'');
-  bar.parentNode.insertBefore(row, bar.nextSibling);
-  const pv=document.getElementById('pedPrev'), nx=document.getElementById('pedNext');
+  const sheet=document.getElementById('sheet'); const bar=sheet.querySelector('.sheet-actions'); if(!bar || !path) return;
+  const usable=pedVisibleSlots().filter(pedSlotUsable);
+  const idx=usable.findIndex(el=>el.dataset.pedat===path);
+  const hasPrev=idx>0, hasNext=idx>=0 && idx<usable.length-1;
+  // one tidy bar pinned to the bottom of the panel replaces Cancel / Save: Previous, Close, Next. Each of them saves first.
+  bar.style.display='none';
+  const h2=sheet.querySelector('h2');
+  if(h2 && idx>=0 && usable.length>1){ const pos=document.createElement('div'); pos.className='card-sub'; pos.style.cssText='margin:-8px 0 12px;'; pos.textContent='Rabbit '+(idx+1)+' of '+usable.length; h2.insertAdjacentElement('afterend',pos); }
+  const row=document.createElement('div');
+  row.style.cssText='position:sticky; bottom:0; display:flex; gap:8px; margin:16px -18px -26px; padding:10px 18px 14px; background:var(--page); border-top:1px solid var(--line); z-index:2;';
+  row.innerHTML=(hasPrev?'<button type="button" class="btn btn-secondary" style="flex:1; min-width:0;" id="pedPrev">&lsaquo; Previous</button>':'')
+    +`<button type="button" class="btn ${hasNext?'btn-secondary':'btn-primary'}" style="flex:1; min-width:0;" id="pedClose">Close</button>`
+    +(hasNext?'<button type="button" class="btn btn-primary" style="flex:1; min-width:0;" id="pedNext">Next &rsaquo;</button>':'');
+  sheet.appendChild(row);
+  const pv=document.getElementById('pedPrev'), nx=document.getElementById('pedNext'), cl=document.getElementById('pedClose');
   if(pv) pv.onclick=()=>pedAdvance(path,-1);
   if(nx) nx.onclick=()=>pedAdvance(path,1);
+  if(cl) cl.onclick=()=>pedAdvance(path,0);
 }
 function wirePedigreeTaps(container, r, back){
   container.querySelectorAll('[data-pedname]').forEach(b=>b.onclick=()=>{
@@ -7711,6 +7720,53 @@ async function renderPedigreePreviewCanvas(bytes){
   const drawW = full.width*scale, drawH = full.height*scale;
   const dx = (visible.width-drawW)/2, dy = (visible.height-drawH)/2;
   ctx.drawImage(full, 0, 0, full.width, full.height, dx, dy, drawW, drawH);
+  window._pedPreviewFull = full;            // kept so a tap can open it big
+  visible.style.cursor = 'zoom-in';
+  visible.onclick = openPedigreeZoom;
+}
+// Tap the small preview to look at the page up close. Its own - / Fit / + buttons and two-finger pinch zoom in and out,
+// and Close is always on screen, so you can't get stuck zoomed in.
+function openPedigreeZoom(){
+  const full = window._pedPreviewFull; if(!full) return;
+  const old = document.getElementById('pedZoomOv'); if(old) old.remove();
+  const ov = document.createElement('div'); ov.id='pedZoomOv';
+  ov.style.cssText = 'position:fixed; inset:0; z-index:100000; background:#6b6e70; display:flex; flex-direction:column;';
+  const bar = document.createElement('div');
+  bar.style.cssText = 'flex:none; display:flex; gap:8px; align-items:center; padding:8px 10px; background:#3a1d44;';
+  const mk = (txt, fn, flex)=>{ const b=document.createElement('button'); b.type='button'; b.textContent=txt; b.onclick=fn;
+    b.style.cssText = 'height:44px; min-width:44px; padding:0 14px; border-radius:22px; border:0; background:#fff; color:#2a1a2e; font:700 15px "Public Sans",sans-serif;'+(flex?'flex:1;':''); return b; };
+  const area = document.createElement('div');
+  area.style.cssText = 'flex:1; overflow:auto; -webkit-overflow-scrolling:touch; touch-action:pan-x pan-y;';
+  const c = document.createElement('canvas'); c.width=full.width; c.height=full.height;
+  c.getContext('2d').drawImage(full,0,0);
+  c.style.cssText = 'display:block; height:auto; background:#fff; margin:0;';
+  area.appendChild(c);
+  let z = 1;
+  const fitW = ()=>Math.max(200, area.clientWidth);
+  const apply = (nz, cx, cy)=>{
+    nz = Math.min(5, Math.max(1, nz));
+    const oldW = c.offsetWidth || fitW(), r = area.getBoundingClientRect();
+    const px = (area.scrollLeft + (cx==null ? area.clientWidth/2 : cx - r.left)) / oldW;
+    const py = (area.scrollTop + (cy==null ? area.clientHeight/2 : cy - r.top)) / (c.offsetHeight || 1);
+    z = nz; c.style.width = Math.round(fitW()*z)+'px';
+    area.scrollLeft = px*c.offsetWidth - (cx==null ? area.clientWidth/2 : cx - r.left);
+    area.scrollTop  = py*c.offsetHeight - (cy==null ? area.clientHeight/2 : cy - r.top);
+  };
+  bar.appendChild(mk('Close', ()=>ov.remove()));
+  const sp = document.createElement('div'); sp.style.flex='1'; bar.appendChild(sp);
+  bar.appendChild(mk('\u2212', ()=>apply(z/1.5)));
+  bar.appendChild(mk('Fit', ()=>apply(1)));
+  bar.appendChild(mk('+', ()=>apply(z*1.5)));
+  // two-finger pinch
+  let pinch = null;
+  const dist = t=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+  area.addEventListener('touchstart', e=>{ if(e.touches.length===2) pinch = { d:dist(e.touches), z }; }, {passive:true});
+  area.addEventListener('touchmove', e=>{ if(pinch && e.touches.length===2){ e.preventDefault();
+    apply(pinch.z*dist(e.touches)/pinch.d, (e.touches[0].clientX+e.touches[1].clientX)/2, (e.touches[0].clientY+e.touches[1].clientY)/2); } }, {passive:false});
+  area.addEventListener('touchend', e=>{ if(e.touches.length<2) pinch=null; }, {passive:true});
+  area.addEventListener('dblclick', ()=>apply(z>1.2?1:2.5));
+  ov.appendChild(bar); ov.appendChild(area); document.body.appendChild(ov);
+  c.style.width = fitW()+'px';
 }
 /* ---------------- LIVE PEDIGREE PREVIEW ----------------
    Shown whenever "Download Official Pedigree PDF" is tapped for an
@@ -7736,7 +7792,8 @@ function openPedigreeLivePreviewSheet(r, myProfileForPdf, hasCustomBackground){
       <div style="border:1px solid var(--line-strong); border-radius:10px; overflow:hidden; margin-bottom:6px; background:#6b6e70;">
         <canvas id="ped-preview-canvas" style="width:100%; height:320px; display:block; background:#fff;"></canvas>
       </div>
-      <div id="ped-preview-status" class="card-sub" style="margin-bottom:12px; min-height:16px;">Loading preview&hellip;</div>
+      <div id="ped-preview-status" class="card-sub" style="margin-bottom:4px; min-height:16px;">Loading preview&hellip;</div>
+      <div class="card-sub" style="margin-bottom:12px;">Tap the preview to zoom in and out.</div>
       <div class="card-sub" style="margin:-6px 0 12px;">Pedigree customization settings are under More &rarr; Pedigree settings.</div>
       ${hasCustomBackground?`<div class="field"><label>Background</label>
         <div class="seg" id="pp-bg-choice">
