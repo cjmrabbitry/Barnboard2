@@ -2151,7 +2151,8 @@ function defaultPedigreeSettings(){
     logoDataUrl:null, social:'', tagline:'',
     printTheme:'mono', customAccent:'#c6a15b', hasCertification:true, footerStyle:'plain',
     nameFont:'libre', titleFont:'libre', watermarkEnabled:false, watermarkText:'', watermarkFont:'libre',
-    fields:{ dob:true, reg:true, gc:true, ear:true, color:true, weight:true }
+    fields:{ dob:true, reg:true, gc:true, ear:true, color:true, weight:true },
+    signatureOn:false, signature:null, signatureDate:false
   };
 }
 const FONT_OPTIONS = [
@@ -2664,7 +2665,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-22-tourmore';
+const APP_VERSION = '2026-10-22-signature';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -6102,6 +6103,7 @@ function openBreedSheet(r, presetBuck, onDone){
     <div class="field"><label>Buck</label><input id="f-buck" placeholder="Type or pick a buck" value="${esc(presetBuck||'')}"></div>
     <div id="f-relate" class="relate-box">Pick a buck to check relatedness.</div>
     <div class="field" style="margin-top:12px;"><label>Bred date</label><input type="date" id="f-bred" value="${esc(todayStr())}"></div>
+    <div class="field" style="margin-top:12px;"><label>Notes (optional)</label><textarea id="f-bnotes" rows="2" placeholder="Anything to remember about this breeding"></textarea></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
   const buckInput=document.getElementById('f-buck'), box=document.getElementById('f-relate'), saveBtn=document.getElementById('f-save');
   attachSuggest(buckInput, ()=>bucks);
@@ -6114,12 +6116,12 @@ function openBreedSheet(r, presetBuck, onDone){
   }
   buckInput.addEventListener('input',upd); upd();
   saveBtn.onclick=()=>{
-    const buck=buckInput.value.trim(), bred=csvParseDate(document.getElementById('f-bred').value)||todayStr();
+    const buck=buckInput.value.trim(), bred=csvParseDate(document.getElementById('f-bred').value)||todayStr(), bnotes=(document.getElementById('f-bnotes').value||'').trim();
     if(buck && !rabbits.some(x=>nameKey(x.name)===nameKey(buck))){
       const dupes=fuzzyMatches(buck);
-      if(dupes.length){ openDuplicateSheet(buck, dupes, chosen=>{ commitBreed(r, chosen||buck, bred, onDone); }); return; }
+      if(dupes.length){ openDuplicateSheet(buck, dupes, chosen=>{ commitBreed(r, chosen||buck, bred, onDone, bnotes); }); return; }
     }
-    commitBreed(r, buck, bred, onDone);
+    commitBreed(r, buck, bred, onDone, bnotes);
   };
 }
 
@@ -6131,6 +6133,7 @@ function openEditBreedingSheet(r){
     <div class="field"><label>Buck</label><input id="f-buck" placeholder="Type or pick a buck" value="${esc(r.partner||'')}" autocomplete="off"></div>
     <div class="field" style="margin-top:12px;"><label>Bred date</label><input type="date" id="f-bred" value="${esc(r.bredDate||todayStr())}"></div>
     <div class="card-sub" id="f-dueline" style="margin-top:8px;"></div>
+    <div class="field" style="margin-top:12px;"><label>Notes (optional)</label><textarea id="f-bnotes" rows="2" placeholder="Anything to remember about this breeding">${esc((((r.breedingHistory||[]).find(x=>x.id===r.activeBreedingId))||{}).notes||'')}</textarea></div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>`);
   attachSuggest(document.getElementById('f-buck'), ()=>bucks);
   const dueLine=()=>{ const v=csvParseDate(document.getElementById('f-bred').value); document.getElementById('f-dueline').textContent = v ? 'Due about '+fmtDate(addDays(v,31)) : ''; };
@@ -6138,7 +6141,7 @@ function openEditBreedingSheet(r){
   const commit=(buck,bred)=>{
     r.partner=buck||null; r.bredDate=bred; r.dueDate=addDays(bred,31);
     const e=(r.breedingHistory||[]).find(x=>x.id===r.activeBreedingId);
-    if(e){ e.bredDate=bred; e.partner=buck||''; e.dueDate=r.dueDate; }
+    if(e){ e.bredDate=bred; e.partner=buck||''; e.dueDate=r.dueDate; const nn=(document.getElementById('f-bnotes').value||'').trim(); if(nn) e.notes=nn; else delete e.notes; }
     if(buck && !rabbits.some(x=>nameKey(x.name)===nameKey(buck))) rabbits.push(blankRabbit({name:buck,sex:'buck',status:'available'}));
     saveData(); closeSheet(); render(); if(profileRabbitId) renderProfile(); showToast('Breeding updated');
   };
@@ -6151,7 +6154,7 @@ function openEditBreedingSheet(r){
     commit(buck, bred);
   };
 }
-function commitBreed(r, buck, bred, onDone){
+function commitBreed(r, buck, bred, onDone, bnotes){
   // make sure the finished litter is saved in her history before anything on her record changes
   if(r.litterBornDate && (r.litterKits||[]).length){
     syncLitterEntry(r);
@@ -6165,6 +6168,7 @@ function commitBreed(r, buck, bred, onDone){
   r.flag='';
   r.breedingHistory = r.breedingHistory||[];
   const entry = {id:uid(), bredDate:bred, partner:buck||'', dueDate:r.dueDate, outcome:'pending', litterBornDate:null, litterKits:null, litterDead:null, weanDate:null, sellDate:null};
+  if(bnotes) entry.notes=bnotes;
   r.breedingHistory.push(entry); r.activeBreedingId = entry.id;
   if(buck && !rabbits.some(x=>nameKey(x.name)===nameKey(buck))) rabbits.push(blankRabbit({name:buck,sex:'buck',status:'available'}));
   saveData(); closeSheet(); render(); if(profileRabbitId) renderProfile(); showToast(r.name+' marked bred');
@@ -6844,6 +6848,7 @@ function historyEntryHTML(damObj, e){
   let detail = `Bred to <b>${esc(e.partner||'?')}</b> on ${fmtDate(e.bredDate)}`;
   if(damObj) detail = `<b>${esc(damObj.name)}</b> &times; ${esc(e.partner||'?')} — bred ${fmtDate(e.bredDate)}`;
   if(e.outcome==='litter' && e.litterKits) detail += `<br>${kitCountText(e.litterKits,e.litterDead)} &middot; born ${fmtDate(e.litterBornDate)}`;
+  if(e.notes) detail += `<br><i>Notes:</i> ${esc(e.notes)}`;
   if(e.palpated==='positive') detail += `<br>Palpated positive${e.palpatedDate?' '+esc(fmtShort(e.palpatedDate)):''}`;
   const canAgain = damObj && e.partner && damObj.sex==='doe' && damObj.status!=='pregnant' && damObj.status!=='growing' && (damObj.status!=='nursing' || canRebred(damObj));
   return `<div class="history-entry ${cls}"><div class="card-detail" style="margin:0;"><b>${label}</b></div><div class="card-detail" style="margin-top:2px;">${detail}</div>
@@ -7565,6 +7570,20 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
   }
 
   const pedigreeSettings2 = overrides.settings || pedigreeSettings;
+  // Signature on the certification line (only if she switched it on in Pedigree settings)
+  const sigSet = (pedigreeSettings2.signatureOn && pedigreeSettings2.signature) ? pedigreeSettings2.signature : null;
+  let sigImg = null;
+  if(sigSet && sigSet.kind==='drawn' && sigSet.png){ try{ sigImg = await pdfDoc.embedPng(dataUrlToBytes(sigSet.png)); }catch(e){ console.error(e); } }
+  const hasSig = !!(sigImg || (sigSet && sigSet.kind==='font' && (sigSet.text||'').trim()));
+  const sigInk = rgb(0.08,0.14,0.30);
+  const drawSig = (x, baseY, maxW, maxH)=>{
+    if(!hasSig) return;
+    if(sigImg){ const k=Math.min(maxW/sigImg.width, maxH/sigImg.height); page.drawImage(sigImg,{x, y:baseY+1, width:sigImg.width*k, height:sigImg.height*k}); return; }
+    const f = (typeof fonts!=='undefined' && fonts[sigSet.font]) || fonts.script, t=sigSet.text.trim();
+    let size = maxH*1.05; while(size>5 && textWidth(t,f,size)>maxW) size-=0.5;
+    drawText(t, x, baseY+size*0.82+1.5, f, size, sigInk);
+  };
+  const sigDateStr = pedigreeSettings2.signatureDate ? fmtDate(todayStr()) : '';
   const theme = overrides.theme || pedigreeSettings2.printTheme || 'mono';
   const customAccentVal = overrides.customAccent || pedigreeSettings2.customAccent;
   const accentHex = pedigreeAccentColorFor(theme, customAccentVal);
@@ -7645,7 +7664,7 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
       boxH = 8;
       if(contactLinesW.length) boxH += contactLinesW.length*7 + 4;
       if(certLinesW.length) boxH += certLinesW.length*7.5 + 6;
-      if(hasSigRow) boxH += 8 + 10 + 8;
+      if(hasSigRow) boxH += 8 + 10 + 8 + (hasSig?8:0);
       boxH += 6;
     }
     footerH = boxH; footerTopY = M+boxH;
@@ -7657,16 +7676,19 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
       certLinesW.forEach(line=>{ drawCenteredText(line, boxX+boxW/2, cy, fonts.serifItalic, 6.5, rgb(0.2,0.2,0.2)); cy -= 7.5; });
       if(certLinesW.length) cy -= 6;
       if(hasSigRow){
+        if(hasSig) cy -= 8;
         const sigSize = 6.5;
         const sigLabelW = textWidth('Signature:', fonts.sans, sigSize);
         const sigBaseline = cy - sigSize*0.82;
         drawText('Signature:', boxX+8, cy, fonts.sans, sigSize, gray);
         page.drawLine({start:{x:boxX+8+sigLabelW+4,y:sigBaseline},end:{x:boxX+boxW-8,y:sigBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        drawSig(boxX+8+sigLabelW+8, sigBaseline, (boxW-16-sigLabelW-4)*0.7, 13);
         cy -= 10;
         const dateLabelW = textWidth('Date:', fonts.sans, sigSize);
         const dateBaseline = cy - sigSize*0.82;
         drawText('Date:', boxX+8, cy, fonts.sans, sigSize, gray);
         page.drawLine({start:{x:boxX+8+dateLabelW+4,y:dateBaseline},end:{x:boxX+boxW-8,y:dateBaseline},thickness:0.6,color:rgb(0.6,0.6,0.6)});
+        if(sigDateStr) drawText(sigDateStr, boxX+8+dateLabelW+8, dateBaseline+6.8, fonts.sans, 6.5, sigInk);
       }
     }
   } else {
@@ -7684,9 +7706,11 @@ async function buildDynamicGenericPedigreePdfBytes(r, myProfileForPdf, overrides
       let lx = W/2 - totalW/2;
       const baseline = fy - sigSize*0.82;
       drawText('Signature:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Signature:',fonts.sans,sigSize)+6;
-      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)}); lx += sigW+gapW;
+      page.drawLine({start:{x:lx,y:baseline},end:{x:lx+sigW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+      drawSig(lx+4, baseline, sigW-8, 22); lx += sigW+gapW;
       drawText('Date:', lx, fy, fonts.sans, sigSize, gray); lx += textWidth('Date:',fonts.sans,sigSize)+6;
       page.drawLine({start:{x:lx,y:baseline},end:{x:lx+dateW,y:baseline},thickness:0.75,color:rgb(0.6,0.6,0.6)});
+      if(sigDateStr) drawText(sigDateStr, lx+3, baseline+8, fonts.sans, 8, sigInk);
     }
   }
 
@@ -9215,6 +9239,15 @@ async function openPedigreeSettingsSheet(){
         ${fieldRows.map(([k,l])=>`<label style="display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;"><input type="checkbox" id="ps-field-${k}" ${s.fields[k]!==false?'checked':''} style="width:18px; height:18px;"> ${l}</label>`).join('')}
       </div>
     </div>
+    <div class="field" id="ps-sigwrap" style="margin-top:10px;"><label>Signature on the line</label>
+      <div class="seg" id="ps-sigmode">
+        <button type="button" data-v="none" class="${!(s.signatureOn&&s.signature)?'on':''}">Blank line</button>
+        <button type="button" data-v="draw" class="${(s.signatureOn&&s.signature&&s.signature.kind==='drawn')?'on':''}">Draw</button>
+        <button type="button" data-v="type" class="${(s.signatureOn&&s.signature&&s.signature.kind==='font')?'on':''}">Type it</button>
+      </div>
+      <div id="ps-sigbody" style="margin-top:8px;"></div>
+      <label id="ps-sigdatewrap" style="display:flex; align-items:center; gap:8px; padding:8px 0 0; font-size:13px;"><input type="checkbox" id="ps-sigdate" ${s.signatureDate?'checked':''} style="width:18px; height:18px;"> Also fill in today's date</label>
+    </div>
     <label style="display:flex; align-items:center; gap:8px; padding:10px 0; font-size:13px;"><input type="checkbox" id="ps-cert" ${s.hasCertification!==false?'checked':''} style="width:18px; height:18px;"> Include certification statement and signature line</label>
     <label style="display:flex; align-items:center; gap:8px; padding:10px 0 4px; font-size:13px;"><input type="checkbox" id="ps-watermark" ${s.watermarkEnabled?'checked':''} style="width:18px; height:18px;"> Show diagonal watermark</label>
     <div class="field" id="ps-watermarkwrap" style="${s.watermarkEnabled?'':'display:none;'}">
@@ -9223,6 +9256,49 @@ async function openPedigreeSettingsSheet(){
       ${fontSegHTML('ps-watermarkfont', s.watermarkFont, 'libre')}
     </div>
     <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="ps-save">Save</button></div>`);
+
+  // ---- signature picker (drawn or typed). Nothing is saved until she taps Save. ----
+  const SIG_FONTS=[['script','Great Vibes','GreatVibes-Regular.ttf'],['allura','Allura','Allura-Regular.ttf'],['alexbrush','Alex Brush','AlexBrush-Regular.ttf'],['handwritten','Caveat','Caveat-Bold.ttf']];
+  window._sigFontsLoaded = window._sigFontsLoaded || {};
+  SIG_FONTS.forEach(([k,n,f])=>{ try{ if(!window._sigFontsLoaded[k]){ window._sigFontsLoaded[k]=1; const ff=new FontFace('HNSig-'+k,'url(fonts/'+f+')'); ff.load().then(x=>{ document.fonts.add(x); const bb=document.querySelectorAll('#ps-sigfonts [data-f]'); bb.forEach(e=>{ e.style.fontFamily=e.style.fontFamily; }); }).catch(()=>{ window._sigFontsLoaded[k]=0; }); } }catch(e){} });
+  let sigState = Object.assign({kind:'drawn', png:null, text:'', font:'script'}, s.signature||{});
+  let sigMode = (s.signatureOn&&s.signature) ? (s.signature.kind==='font'?'type':'draw') : 'none';
+  const sigBody=document.getElementById('ps-sigbody');
+  function drawSigBody(){
+    document.querySelectorAll('#ps-sigmode button').forEach(b=>b.classList.toggle('on', b.dataset.v===sigMode));
+    document.getElementById('ps-sigdatewrap').style.display = sigMode==='none'?'none':'flex';
+    if(sigMode==='none'){ sigBody.innerHTML='<div class="card-sub">The line stays blank so you can sign by hand.</div>'; return; }
+    if(sigMode==='draw'){
+      sigBody.innerHTML=`<div class="card-sub" style="margin-bottom:6px;">Sign with your finger or mouse:</div>
+        <canvas id="ps-sigcanvas" width="600" height="180" style="width:100%; height:auto; aspect-ratio:10/3; background:#fffdf8; border:1px solid var(--line); border-radius:8px; touch-action:none;"></canvas>
+        <button type="button" class="btn btn-secondary btn-sm" id="ps-sigclear" style="margin-top:8px;">Clear and start over</button>`;
+      const cv=document.getElementById('ps-sigcanvas'), cx=cv.getContext('2d');
+      cx.strokeStyle='#14224d'; cx.lineWidth=3; cx.lineCap='round'; cx.lineJoin='round';
+      if(sigState.png){ const im=new Image(); im.onload=()=>{ const k=Math.min(cv.width/im.width, cv.height/im.height, 1); cx.drawImage(im,(cv.width-im.width*k)/2,(cv.height-im.height*k)/2,im.width*k,im.height*k); }; im.src=sigState.png; }
+      let down=false, lx=0, ly=0;
+      const pos=e=>{ const r=cv.getBoundingClientRect(); return {x:(e.clientX-r.left)*cv.width/r.width, y:(e.clientY-r.top)*cv.height/r.height}; };
+      cv.onpointerdown=e=>{ e.preventDefault(); down=true; try{ cv.setPointerCapture(e.pointerId); }catch(_){} const q=pos(e); lx=q.x; ly=q.y; cx.beginPath(); cx.arc(lx,ly,1.4,0,6.3); cx.fillStyle='#14224d'; cx.fill(); };
+      cv.onpointermove=e=>{ if(!down) return; e.preventDefault(); const q=pos(e); cx.beginPath(); cx.moveTo(lx,ly); cx.lineTo(q.x,q.y); cx.stroke(); lx=q.x; ly=q.y; };
+      const up=()=>{ if(!down) return; down=false; sigState.kind='drawn'; sigState.png=trimSig(cv); };
+      cv.onpointerup=up; cv.onpointercancel=up;
+      document.getElementById('ps-sigclear').onclick=()=>{ cx.clearRect(0,0,cv.width,cv.height); sigState.png=null; };
+    } else {
+      sigBody.innerHTML=`<input id="ps-sigtext" maxlength="40" placeholder="Type your name" value="${esc(sigState.text||'')}" autocomplete="off">
+        <div style="display:flex; flex-direction:column; gap:6px; margin-top:8px;" id="ps-sigfonts">${SIG_FONTS.map(([k,n])=>`<button type="button" data-f="${k}" class="btn btn-secondary" style="justify-content:flex-start; min-height:56px; font-family:'HNSig-${k}',cursive; font-size:28px; font-weight:400; ${sigState.font===k?'border:2px solid var(--navy,#3a1d44);':''}"><span class="sigpv">${esc(sigState.text||'Your Name')}</span></button>`).join('')}</div>`;
+      const ti=document.getElementById('ps-sigtext');
+      ti.oninput=()=>{ sigState.text=ti.value; sigState.kind='font'; document.querySelectorAll('#ps-sigfonts .sigpv').forEach(x=>x.textContent=ti.value||'Your Name'); };
+      document.querySelectorAll('#ps-sigfonts [data-f]').forEach(b=>b.onclick=()=>{ sigState.font=b.dataset.f; sigState.kind='font'; document.querySelectorAll('#ps-sigfonts [data-f]').forEach(x=>x.style.border=x===b?'2px solid var(--navy,#3a1d44)':''); });
+    }
+  }
+  function trimSig(cv){
+    const c=cv.getContext('2d'), d=c.getImageData(0,0,cv.width,cv.height).data; let x0=cv.width,y0=cv.height,x1=0,y1=0;
+    for(let y=0;y<cv.height;y++) for(let x=0;x<cv.width;x++) if(d[(y*cv.width+x)*4+3]>20){ if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y; }
+    if(x1<=x0||y1<=y0) return null;
+    const pad=6, w=x1-x0+1+pad*2, h=y1-y0+1+pad*2, o=document.createElement('canvas'); o.width=w; o.height=h;
+    o.getContext('2d').drawImage(cv,x0-pad,y0-pad,w,h,0,0,w,h); return o.toDataURL('image/png');
+  }
+  document.querySelectorAll('#ps-sigmode button').forEach(b=>b.onclick=()=>{ sigMode=b.dataset.v; if(sigMode==='draw') sigState.kind='drawn'; if(sigMode==='type') sigState.kind='font'; drawSigBody(); });
+  drawSigBody();
 
   const myTplSave = document.getElementById('ps-mytemplate-save');
   if(myTplSave) myTplSave.onclick = async ()=>{
@@ -9286,6 +9362,12 @@ async function openPedigreeSettingsSheet(){
     pedigreeSettings.printTheme = document.querySelector('#ps-theme button.on').dataset.v;
     pedigreeSettings.customAccent = document.getElementById('ps-customcolor').value;
     pedigreeSettings.hasCertification = document.getElementById('ps-cert').checked;
+    // signature: keep what she drew/typed even if she switches it off, so nothing is lost
+    const sigOk = sigMode==='draw' ? !!sigState.png : sigMode==='type' ? !!(sigState.text||'').trim() : false;
+    if(sigMode!=='none' && !sigOk){ showToast(sigMode==='draw'?'Draw your signature first, or choose Blank line':'Type your name first, or choose Blank line'); return; }
+    if(sigMode!=='none'){ pedigreeSettings.signature = Object.assign({}, pedigreeSettings.signature||{}, {kind:sigState.kind, png:sigState.png, text:(sigState.text||'').trim(), font:sigState.font}); }
+    pedigreeSettings.signatureOn = sigMode!=='none';
+    pedigreeSettings.signatureDate = document.getElementById('ps-sigdate').checked;
     pedigreeSettings.watermarkEnabled = document.getElementById('ps-watermark').checked;
     pedigreeSettings.watermarkText = document.getElementById('ps-watermarktext').value.trim();
     pedigreeSettings.watermarkFont = document.getElementById('ps-watermarkfont').value;
@@ -9630,6 +9712,7 @@ function palpateLineHTML(r){
   if(r.palpate.next) return `Snoozed &middot; palpate again ${esc(fmtShort(r.palpate.next))}`;
   return '';
 }
+function curNotesHTML(r){ const e=(r.breedingHistory||[]).find(x=>x.id===r.activeBreedingId); return (e&&e.notes)?`<br><i>Notes:</i> ${esc(e.notes)}`:''; }
 function breedingNowHTML(r){
   if(r.status==='pregnant'){
     const d=daysToDue(r);
@@ -9638,7 +9721,7 @@ function breedingNowHTML(r){
     let relHTML='';   // relatedness is only checked when marking a doe bred
     const stops=[{label:'Bred',date:r.bredDate},{label:(r.palpate&&r.palpate.key===palpateKey(r)&&r.palpate.state==='positive')?'Palpated ✓':'Palpate',date:(r.palpate&&r.palpate.key===palpateKey(r)&&r.palpate.state==='positive'&&r.palpate.date)?r.palpate.date:addDays(r.bredDate,palpateDays())},{label:'Nest box',date:r.dueDate?addDays(r.dueDate,-nestDays()):null},{label:'Due',date:r.dueDate}];
     return `<div class="card no-tap"><div class="card-name" style="font-size:16px;">Current breeding</div>
-      <div class="card-detail">Bred to <b>${esc(r.partner||'?')}</b> on ${fmtDate(r.bredDate)}${when?' &middot; <b>'+when+'</b>':''}${pal?'<br>'+pal:''}</div>
+      <div class="card-detail">Bred to <b>${esc(r.partner||'?')}</b> on ${fmtDate(r.bredDate)}${when?' &middot; <b>'+when+'</b>':''}${pal?'<br>'+pal:''}${curNotesHTML(r)}</div>
       ${timelineHTML(stops)}${relHTML}
       <div class="card-actions"><button class="btn btn-primary btn-sm" data-pa="kindled">Kindled</button><button class="btn btn-secondary btn-sm" data-pa="editbreed">Edit breeding</button><button class="btn btn-danger btn-sm" data-pa="lost">Not bred</button></div></div>`;
   }
@@ -9677,7 +9760,7 @@ function oldBreedingTabHTML(r){
   if(r.status==='pregnant'){
     const d=daysToDue(r);
     cur = `<div class="card no-tap"><div class="card-name" style="font-size:16px;">Current breeding</div>
-      <div class="card-detail">Bred to <b>${esc(r.partner||'?')}</b> on ${fmtDate(r.bredDate)}<br>Estimated kindling: <b>${fmtDate(r.dueDate)}</b> (${d<0?-d+' days overdue':d===0?'today':'in '+d+' days'})</div>
+      <div class="card-detail">Bred to <b>${esc(r.partner||'?')}</b> on ${fmtDate(r.bredDate)}<br>Estimated kindling: <b>${fmtDate(r.dueDate)}</b> (${d<0?-d+' days overdue':d===0?'today':'in '+d+' days'})${curNotesHTML(r)}</div>
       <div class="card-actions"><button class="btn btn-primary btn-sm" data-pa="kindled">Record litter</button><button class="btn btn-secondary btn-sm" data-pa="editbreed">Edit breeding</button><button class="btn btn-danger btn-sm" data-pa="lost">Not bred</button></div></div>`;
   } else if(r.status==='nursing'){
     cur = `<div class="card no-tap"><div class="card-name" style="font-size:16px;">Currently on a litter</div>
