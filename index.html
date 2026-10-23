@@ -2667,7 +2667,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-23-pedfix';
+const APP_VERSION = '2026-10-23-kitcount';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -4352,7 +4352,7 @@ function newNurseryCardHTML(r, mode){
   const actions = wean+`<button class="btn btn-secondary" data-nnped="${r.id}">Pedigree</button>`;
   return `<div class="card nn-card" data-nnopen="${r.id}" style="cursor:pointer;"><div class="nn-top"><div><div class="card-name">${esc(shortName(r.name))}${litterSireName(r)?' &times; '+esc(shortName(litterSireName(r))):''}&rsquo;s Litter</div><div class="card-sub">Born ${nb(fmtShort(r.litterBornDate))} &middot; <b>${nb(esc(litterAgeText(r.litterBornDate))+' old')}</b></div></div>
       <div class="nn-age">${nnRingHTML(r)}<span class="nn-chev" aria-hidden="true">&rsaquo;</span></div></div>
-    <div class="nn-row"><span class="nn-num">${n} ${n===1?'kit':'kits'}</span>${(!kitList&&forSale)?`<em class="nn-tag t-sale">${forSale} for sale</em>`:''}${(!kitList&&reserved)?`<em class="nn-tag t-res">${reserved} reserved</em>`:''}${r.status==='nursing'?'':'<em class="nn-tag t-keep">Weaned</em>'}</div>
+    <div class="nn-row"><span class="nn-num">${n} ${n===1?'kit':'kits'}</span>${(!kitList&&forSale)?`<em class="nn-tag t-sale">${forSale} for sale</em>`:''}${(!kitList&&reserved)?`<em class="nn-tag t-res">${reserved} reserved</em>`:''}${r.status==='nursing'?'':'<em class="nn-tag t-keep">Weaned</em>'}<button type="button" class="btn btn-secondary btn-sm" data-nnedit="${r.id}" style="margin-left:auto;">Change count</button></div>
     ${kitList || (dkOpen?'':`<div class="card-sub">Wean ${nb(fmtShort(r.weanDate))} &middot; Ready to go ${nb(fmtShort(r.sellDate))}</div>`)}
     ${dropdown}
     ${dkOpen?`<div class="card-sub" style="margin-top:8px;">Wean ${nb(fmtShort(r.weanDate))} &middot; Ready to go ${nb(fmtShort(r.sellDate))}</div>`:''}
@@ -4391,6 +4391,7 @@ function renderNewNursery(main){
   main.innerHTML=`${litterToggleHTML()}${body}`;
   main.querySelectorAll('[data-nnopen]').forEach(c=>c.onclick=(ev)=>{ if(ev.target.closest('button')) return; openLitterPage(c.dataset.nnopen); });
   main.querySelectorAll('[data-nnkits]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const id=b.dataset.nnkits; if(nnKitsOpen.has(id)) nnKitsOpen.delete(id); else nnKitsOpen.add(id); render(); });
+  main.querySelectorAll('[data-nnedit]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===b.dataset.nnedit); if(r) openKindledSheet(r,true); });
   main.querySelectorAll('[data-nnwean]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===b.dataset.nnwean); if(r) openWeanPlanSheet(r); });
   main.querySelectorAll('[data-nnped]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===b.dataset.nnped); if(r) openLitterPedigreeSheet(r); });
   bindLitterToggle(main);
