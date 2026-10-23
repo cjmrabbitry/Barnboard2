@@ -2179,8 +2179,10 @@ let expandedLitters = new Set();
 let calWeekStart = null, calSelectedDate = null;
 let searchMode = 'herd';   // 'herd' (rabbits in your herd), 'anc' (ancestors of your herd), 'all' (everyone ever entered)
 
-function todayStr(){ return new Date().toISOString().slice(0,10); }
-function addDays(d,n){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+n); return x.toISOString().slice(0,10); }
+// local calendar date (not UTC), so evenings don't roll over to "tomorrow"
+function localDateStr(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function todayStr(){ return localDateStr(new Date()); }
+function addDays(d,n){ const x=new Date(d+'T00:00:00'); x.setDate(x.getDate()+n); return localDateStr(x); }
 function daysBetween(a,b){ return Math.round((new Date(b+'T00:00:00')-new Date(a+'T00:00:00'))/86400000); }
 function fmtDate(d){ if(!d) return ''; return new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}); }
 function fmtMoney(n){ n=Number(n)||0; if(Math.abs(n)<0.005) n=0; return (n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); }
@@ -2665,7 +2667,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-22-signature';
+const APP_VERSION = '2026-10-23-pedfix';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3861,6 +3863,9 @@ function fuzzyMatches(name, excludeId){
     // word with a typo — a name that's simply a substring of a much
     // longer one (e.g. "Rose" inside "Roseanna") is a different name,
     // not a typo, so that case no longer counts on its own.
+    // names with numbers or codes (GBF ND22 vs GBF ND31) are different rabbits, not typos of each other
+    const dn=(n.match(/\d+/g)||[]).join('-'), dq=(q.match(/\d+/g)||[]).join('-');
+    if((dn||dq) && dn!==dq) return false;
     if(Math.abs(n.length-q.length)>2) return false;
     const maxLen = Math.max(n.length,q.length);
     const tol = maxLen<=7 ? 1 : maxLen<=11 ? 2 : 3;
@@ -4508,6 +4513,7 @@ function babyEditorHTML(k,i){
     <div class="lp-bl">Tag <button type="button" class="lp-edtags">Edit tags</button></div>
     <div class="nn-chips lp-tags"><button type="button" class="nn-chip ${tg===''?'on':''}" data-tg="">None</button>${allKitTags().map(t=>`<button type="button" class="nn-chip ${tg===t?'on':''}" data-tg="${esc(t)}">${esc(t)}</button>`).join('')}</div>
     <button type="button" class="lp-more" data-more="${i}">Weight, photo &amp; markings &rsaquo;</button>
+    <button type="button" class="lit-delete" data-rmkit="${i}" style="margin-top:8px;">Added by mistake? Remove this kit</button>
   </div>`;
 }
 function openLitterPage(damId){
@@ -4567,6 +4573,11 @@ function openLitterPage(damId){
       commitBaby(i,w);
     });
     ed.querySelector('[data-more]').onclick=()=>openKitTagSheet(r.id,i);
+    const rmk=ed.querySelector('[data-rmkit]');
+    if(rmk) rmk.onclick=()=>armConfirm(rmk,'Tap again to confirm',()=>{
+      (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:k});
+      r.litterKits=r.litterKits.filter(x=>x!==k); litterChanged(r); openLitterPage(damId); showToast('Removed. Find it in Recently deleted to put it back');
+    });
     ed.querySelector('.lp-edtags').onclick=()=>openKitTagsSettings(again);
   });
   document.querySelectorAll('[data-editloss]').forEach(b=>b.onclick=()=>openLossSheet(r,b.dataset.editloss,again));
@@ -5938,9 +5949,10 @@ function openKindledSheet(r, editing){
     <div class="lit-card"><div class="field"><label>Date kindled</label><input type="date" id="f-born" value="${esc(st.born)}"></div>
     ${needsBuck?`<div class="field" style="margin-top:12px;"><label>Buck (optional)</label><input id="f-buck" placeholder="Type or pick a buck" autocomplete="off">
       <div class="lit-hint" id="f-bredhint"></div></div>`:''}</div>
-    ${(editing&&litterUiOn)?`<div class="lit-card"><div class="st-row" style="padding:0;"><div><b>${existing.length} ${existing.length===1?'kit':'kits'} in this litter</b><div class="card-sub">To record a loss, use the litter page.</div></div><button type="button" class="btn btn-secondary btn-sm" id="f-addkit">+ Add a kit</button></div></div>`:`<div class="st-block lit-card lit-alive">
+    ${`<div class="st-block lit-card lit-alive">
       <div class="st-title">Kits born alive</div>
       ${stepper('alive',true)}
+      ${(editing&&litterUiOn)?`<div class="card-sub" style="text-align:center; margin-top:6px;">Made a mistake? Change the number here. Lowering it removes kits from the end (you can put them back from Recently deleted). To remove one particular kit, open it on the litter page.</div>`:''}
       ${linkedCount?`<div class="card-sub" style="text-align:center; margin-top:6px;">${linkedCount} ${linkedCount===1?'kit already has':'kits already have'} a profile page, so this can't go below ${linkedCount}.</div>`:''}
     </div>`}
     ${(!editing && litterUiOn)?oldKitsNoticeHTML(r):''}
@@ -6998,13 +7010,22 @@ function pedDockOn(box){
   box.classList.add('sel'); tree.classList.add('has-sel');
   document.body.classList.add('ped-dock');
 }
-function pedExtraButtons(anc, back){
-  const bar=document.querySelector('#sheet .sheet-actions'); if(!bar || !anc || anc.external) return;
-  const row=document.createElement('div'); row.className='sheet-actions'; row.style.cssText='flex-wrap:wrap;margin-top:8px;';
-  row.innerHTML='<button type="button" class="btn btn-secondary" style="flex:1;" id="pedOpenProf">Open full profile</button><button type="button" class="btn btn-secondary" style="flex:1;" id="pedShowPed">Show their pedigree</button>';
-  bar.parentNode.insertBefore(row, bar.nextSibling);
-  document.getElementById('pedOpenProf').onclick=()=>{ closeSheet(); openRabbitProfile(anc); };
-  document.getElementById('pedShowPed').onclick=()=>{ closeSheet(); openRabbitProfile(anc,'pedigree'); };
+function pedExtraButtons(anc, back, slot){
+  const bar=document.querySelector('#sheet .sheet-actions'); if(!bar || !anc) return;
+  let after=bar;
+  if(!anc.external){
+    const row=document.createElement('div'); row.className='sheet-actions'; row.style.cssText='flex-wrap:wrap;margin-top:8px;';
+    row.innerHTML='<button type="button" class="btn btn-secondary" style="flex:1;" id="pedOpenProf">Open full profile</button><button type="button" class="btn btn-secondary" style="flex:1;" id="pedShowPed">Show their pedigree</button>';
+    bar.parentNode.insertBefore(row, bar.nextSibling); after=row;
+    document.getElementById('pedOpenProf').onclick=()=>{ closeSheet(); openRabbitProfile(anc); };
+    document.getElementById('pedShowPed').onclick=()=>{ closeSheet(); openRabbitProfile(anc,'pedigree'); };
+  }
+  if(slot && slot.parent){
+    const r2=document.createElement('div'); r2.className='sheet-actions'; r2.style.cssText='margin-top:8px;';
+    r2.innerHTML='<button type="button" class="btn btn-secondary" style="flex:1;" id="pedSwap">Wrong rabbit here? Put a different one in this spot</button>';
+    after.parentNode.insertBefore(r2, after.nextSibling);
+    document.getElementById('pedSwap').onclick=()=>{ closeSheet(); openQuickNameSheet(slot.parent, slot.rel, back); };
+  }
 }
 // Previous / Next inside the edit panel: saves what you typed, closes, and opens the next rabbit in the order you read the pedigree
 // (the order the boxes appear on screen: top to bottom on a phone, left to right then top to bottom on a computer)
@@ -7059,7 +7080,9 @@ function pedNavButtons(path){
 function wirePedigreeTaps(container, r, back){
   container.querySelectorAll('[data-pedname]').forEach(b=>b.onclick=()=>{
     const anc=findByName(b.dataset.pedname); if(!anc) return;
-    openEditSheet(anc,back,{lean:true}); pedExtraButtons(anc,back); pedNavButtons(b.dataset.pedat);
+    const pth=b.dataset.pedat||'', ppth=pth.slice(0,-1);
+    const slotParent = pth ? (ppth===''?r:ancestorByPath(r.name,ppth)) : null;
+    openEditSheet(anc,back,{lean:true}); pedExtraButtons(anc,back,slotParent&&slotParent.name?{parent:ensureAncestor(slotParent.name),rel:pth.slice(-1)}:null); pedNavButtons(b.dataset.pedat);
     pedDockOn(b);
   });
   container.querySelectorAll('[data-pedpath]').forEach(b=>b.onclick=()=>{
@@ -7165,7 +7188,8 @@ function openQuickNameSheet(parent, rel, back){
       saveData().then(ok=>{ if(ok) done(back); });
     };
     if(rabbits.some(x=>nameKey(x.name)===nameKey(name))) return commit(name);
-    const m=fuzzyMatches(name);
+    const wantSex = rel==='s' ? 'buck' : 'doe';
+    const m=fuzzyMatches(name).filter(x=>x.sex===wantSex);
     if(m.length){ openDuplicateSheet(name, m, chosen=>commit(chosen||name)); return; }
     commit(name);
   };
@@ -11028,7 +11052,14 @@ function hnParseBox(lines, role){
   if(!lines.length) return null;
   const d = { name:'', color:'', earNumber:'', registrationNumber:'', weight:'', legsWins:'', dob:null, gc:'', breed:'' };
   const date = s => csvParseDate(s) || pdfParseDob(s);
-  const wt = s => { const m=String(s||'').match(/[\d.]+/); return m?m[0]:''; };
+  // keeps pounds + ounces ("4 lbs 7 oz") and kg/oz/g as written; a plain number or "x lbs" stays just the number
+  const wt = s => {
+    s=String(s||'').trim();
+    let m=s.match(/^([\d.]+)\s*(?:lbs?|#)?$/i); if(m) return m[1];
+    m=s.match(/^([\d.]+)\s*lbs?\.?\s*([\d.]+)\s*oz\b/i); if(m) return m[1]+' lbs '+m[2]+' oz';
+    m=s.match(/^([\d.]+)\s*(kg|oz|g)\b/i); if(m) return m[1]+' '+m[2].toLowerCase();
+    m=s.match(/[\d.]+/); return m?m[0]:'';
+  };
   const dash = s => { s=String(s||'').trim(); return (s==='-'||s==='—')?'':s; };
   // newer pedigrees: the name is set in larger type, then the color, then "Ear # x", "DOB x" ... (smaller lines under show wins are skipped)
   const nameH = L[0].h;
