@@ -310,6 +310,8 @@
   [data-theme="dark"] .btn-primary{background:var(--gold-deep); color:#0c1830;}
   .btn-secondary{background:transparent; color:var(--ink); border:1px solid var(--line-strong);}
   .btn-danger{background:transparent; color:var(--rust-text); border:1px solid var(--rust);}
+  .pj-mv{ flex:none; width:36px; height:36px; border-radius:18px; border:1.5px solid var(--line-strong); background:var(--card); color:var(--navy); font-size:12px; cursor:pointer; padding:0; }
+  .pj-mv:disabled{ opacity:.3; cursor:default; }
   .btn-sm{padding:9px 13px; min-height:38px; font-size:12.5px;}
 
   nav.bottom{ position:fixed; bottom:0; left:0; right:0; background:var(--navbar); display:grid; grid-template-columns:repeat(6,1fr); padding:7px 1px 9px; z-index:45; }
@@ -2696,7 +2698,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-23-pjmobile';
+const APP_VERSION = '2026-10-23-pjorder';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -2826,7 +2828,7 @@ function openProjectsManage(after){
   const draw=()=>{
     openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Projects</h2>
       <div class="card-sub" style="margin-bottom:10px;">Removing a project only takes the label off. No rabbit is changed or deleted. Up to ${MAX_PROJECTS} projects.</div>
-      <div class="lit-card">${projects.length?projects.map(p=>`<div style="padding:10px 0; border-top:1px solid var(--line);"><div style="display:flex; align-items:center; gap:10px; min-width:0;"><button type="button" class="pj-sw on" style="background:${projColor(p)};width:28px;height:28px;flex:none;" data-pjcolor="${p.id}" aria-label="Change color for ${esc(p.name)}"></button><b style="flex:1; min-width:0; overflow-wrap:anywhere;">${esc(p.name)}</b> <span class="card-sub" style="flex:none;">${rabbits.filter(r=>inProject(r,p.id)).length} in</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;"><button class="btn btn-primary btn-sm" data-pjadd="${p.id}">Add rabbits</button><button class="btn btn-secondary btn-sm" data-pjwarn="${p.id}">Tell me about${(p.warn||[]).length?' ('+p.warn.length+')':''}</button><button class="btn btn-secondary btn-sm" data-pjren="${p.id}">Rename</button><button class="btn btn-secondary btn-sm" data-pjrm="${p.id}">Remove</button></div></div>`).join(''):'<div class="card-sub">No projects yet.</div>'}</div>
+      <div class="lit-card">${projects.length?projects.map(p=>`<div style="padding:10px 0; border-top:1px solid var(--line);"><div style="display:flex; align-items:center; gap:10px; min-width:0;"><button type="button" class="pj-sw on" style="background:${projColor(p)};width:28px;height:28px;flex:none;" data-pjcolor="${p.id}" aria-label="Change color for ${esc(p.name)}"></button><b style="flex:1; min-width:0; overflow-wrap:anywhere;">${esc(p.name)}</b> <span class="card-sub" style="flex:none;">${rabbits.filter(r=>inProject(r,p.id)).length} in</span><button type="button" class="pj-mv" data-pjmv="-1:${p.id}" aria-label="Move ${esc(p.name)} up" ${projects[0]===p?'disabled':''}>&#9650;</button><button type="button" class="pj-mv" data-pjmv="1:${p.id}" aria-label="Move ${esc(p.name)} down" ${projects[projects.length-1]===p?'disabled':''}>&#9660;</button></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;"><button class="btn btn-primary btn-sm" data-pjadd="${p.id}">Add rabbits</button><button class="btn btn-secondary btn-sm" data-pjwarn="${p.id}">Tell me about${(p.warn||[]).length?' ('+p.warn.length+')':''}</button><button class="btn btn-secondary btn-sm" data-pjren="${p.id}">Rename</button><button class="btn btn-secondary btn-sm" data-pjrm="${p.id}">Remove</button></div></div>`).join(''):'<div class="card-sub">No projects yet.</div>'}</div>
       <div class="sheet-actions"><button class="btn btn-secondary" id="pm-done">Done</button><button class="btn btn-primary" id="pm-add">+ New project</button></div>`);
     document.getElementById('pm-done').onclick=()=>{ closeSheet(); if(after) after(); else render(); };
     document.getElementById('pm-add').onclick=()=>addProjectFlow(()=>openProjectsManage(after));
@@ -2837,6 +2839,15 @@ function openProjectsManage(after){
       openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>${esc(p.name)} color</h2>${projColorPickerHTML(projColor(p),'data-pjpc')}<div class="sheet-actions"><button class="btn btn-secondary" id="pj-cc">Cancel</button></div>`);
       document.getElementById('pj-cc').onclick=draw;
       document.querySelectorAll('[data-pjpc]').forEach(x=>x.onclick=async()=>{ const old=p.color; p.color=x.dataset.pjpc; if(!(await saveProjects())){ p.color=old; return; } draw(); });
+    });
+    document.querySelectorAll('[data-pjmv]').forEach(b=>b.onclick=async()=>{
+      const [d,id]=b.dataset.pjmv.split(':'), i=projects.findIndex(p=>p.id===id), j=i+(+d);
+      if(i<0||j<0||j>=projects.length) return;
+      const oldOrder=projects.slice(), oldColors=projects.map(p=>p.color);
+      projects.forEach(p=>{ p.color=projColor(p); });   // lock each project's current color first, so moving never changes a color
+      const t=projects[i]; projects[i]=projects[j]; projects[j]=t;
+      if(!(await saveProjects())){ projects.length=0; oldOrder.forEach((p,k)=>{ p.color=oldColors[k]; projects.push(p); }); return; }
+      draw();
     });
     document.querySelectorAll('[data-pjrm]').forEach(b=>b.onclick=async()=>{
       const i=projects.findIndex(p=>p.id===b.dataset.pjrm); if(i<0) return;
