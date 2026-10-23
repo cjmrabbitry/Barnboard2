@@ -116,6 +116,7 @@
   .rk-t{ flex:1; min-width:0; font-weight:600; }
   .rk-row .nn-tag{ margin:0; font-size:12px; padding:3px 10px; }
   .nn-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .nn-sec .nn-actions .btn{ flex:1 1 auto; white-space:nowrap; }
   .nn-drop{ display:flex; align-items:center; justify-content:space-between; width:100%; min-height:44px; margin-top:10px; padding:0 14px; border-radius:12px; border:1px solid var(--line-strong); background:var(--card); color:var(--ink); font-family:'Jost',sans-serif; font-weight:700; font-size:14px; cursor:pointer; }
   .nn-drop.on{ border-color:var(--navy); }
   body.look-ribbon .nn-drop{ border-radius:999px; font-family:'Manrope','Public Sans',sans-serif; font-weight:800; color:var(--rb-outline); border:1.5px solid var(--rb-outline); }
@@ -184,6 +185,10 @@
   .nn-sec-c.open{ transform:rotate(90deg); }
   .nn-sec-t{ font-size:12px; letter-spacing:.12em; font-weight:700; text-transform:uppercase; color:var(--muted,#4a3b4d); }
   .nn-sec-n{ margin-left:auto; min-width:24px; height:24px; padding:0 8px; border-radius:12px; background:var(--navy); color:#fff; font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .nn-sec-b{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:12px; align-items:start; }
+  .nn-sec-b > .card{ margin-bottom:0; }
+  .nn-sec-b > .empty, .nn-sec-b > button{ grid-column:1 / -1; }
+  #main.card-grid > .nn-sec{ grid-column:1 / -1; }
   .nn-sec-b[hidden]{ display:none; }
   .nn-when{ font-weight:700; font-size:13px; color:var(--navy); text-align:right; } .nn-when.late{ color:#b8452d; }
   .nn-bar{ height:8px; border-radius:4px; background:var(--line); margin-top:10px; overflow:hidden; } .nn-bar div{ height:100%; background:var(--navy); } .nn-bar div.late{ background:#b8452d; }
@@ -2691,7 +2696,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-23-flowtoggle';
+const APP_VERSION = '2026-10-23-pjmobile';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -2821,7 +2826,7 @@ function openProjectsManage(after){
   const draw=()=>{
     openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Projects</h2>
       <div class="card-sub" style="margin-bottom:10px;">Removing a project only takes the label off. No rabbit is changed or deleted. Up to ${MAX_PROJECTS} projects.</div>
-      <div class="lit-card">${projects.length?projects.map(p=>`<div class="st-row" style="padding:6px 0;"><button type="button" class="pj-sw on" style="background:${projColor(p)};width:28px;height:28px;margin-right:8px;" data-pjcolor="${p.id}" aria-label="Change color for ${esc(p.name)}"></button><b>${esc(p.name)}</b> <span class="card-sub">${rabbits.filter(r=>inProject(r,p.id)).length}</span><span style="flex:1"></span><button class="btn btn-primary btn-sm" data-pjadd="${p.id}">Add rabbits</button> <button class="btn btn-secondary btn-sm" data-pjwarn="${p.id}">Tell me about${(p.warn||[]).length?' ('+p.warn.length+')':''}</button> <button class="btn btn-secondary btn-sm" data-pjren="${p.id}">Rename</button> <button class="btn btn-secondary btn-sm" data-pjrm="${p.id}">Remove</button></div>`).join(''):'<div class="card-sub">No projects yet.</div>'}</div>
+      <div class="lit-card">${projects.length?projects.map(p=>`<div style="padding:10px 0; border-top:1px solid var(--line);"><div style="display:flex; align-items:center; gap:10px; min-width:0;"><button type="button" class="pj-sw on" style="background:${projColor(p)};width:28px;height:28px;flex:none;" data-pjcolor="${p.id}" aria-label="Change color for ${esc(p.name)}"></button><b style="flex:1; min-width:0; overflow-wrap:anywhere;">${esc(p.name)}</b> <span class="card-sub" style="flex:none;">${rabbits.filter(r=>inProject(r,p.id)).length} in</span></div><div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:8px;"><button class="btn btn-primary btn-sm" data-pjadd="${p.id}">Add rabbits</button><button class="btn btn-secondary btn-sm" data-pjwarn="${p.id}">Tell me about${(p.warn||[]).length?' ('+p.warn.length+')':''}</button><button class="btn btn-secondary btn-sm" data-pjren="${p.id}">Rename</button><button class="btn btn-secondary btn-sm" data-pjrm="${p.id}">Remove</button></div></div>`).join(''):'<div class="card-sub">No projects yet.</div>'}</div>
       <div class="sheet-actions"><button class="btn btn-secondary" id="pm-done">Done</button><button class="btn btn-primary" id="pm-add">+ New project</button></div>`);
     document.getElementById('pm-done').onclick=()=>{ closeSheet(); if(after) after(); else render(); };
     document.getElementById('pm-add').onclick=()=>addProjectFlow(()=>openProjectsManage(after));
@@ -4319,7 +4324,7 @@ const LITTER_UI_KEY = 'litterUi_v1';
 let litterUiOn = false, nurseryTab = 'nursing';
 // Herd & Nursery layout: Classic (as before) or New (folding sections, plain A-Z herd). Its own setting; never touches rabbit data.
 const FLOW_UI_KEY = 'flowUi_v1';
-let flowUiOn = false;
+let flowUiOn = false, nnReadyAll = false;
 async function setFlowUi(on){
   const before = flowUiOn; flowUiOn = !!on;
   try{ await window.storage.set(FLOW_UI_KEY, JSON.stringify({on:flowUiOn}), false); }
@@ -4463,7 +4468,10 @@ function renderNewNursery(main){
   const fold=nnFoldGet();
   const litBody = current.length ? current.map(x=>newNurseryCardHTML(x,'ready')).join('') : '<div class="empty">No litters in the nursery right now. Past litters are on each doe\'s profile, under Litters.</div>';
   const dueBody = due.length ? due.map(dueCardHTML).join('') : '<div class="empty">No does are bred right now.</div>';
-  const rdyBody = rdy.length ? rdy.map(readyDoeCardHTML).join('') : '<div class="empty">No open does right now.</div>';
+  // rebreed-ready nursing does first, then the rest A to Z; a long list shows the first few until you ask for all
+  rdy.sort((a,b)=>((b.status==='nursing')-(a.status==='nursing'))||a.name.localeCompare(b.name));
+  const RDY_CAP=8, rdyCut = rdy.length>RDY_CAP && !nnReadyAll;
+  const rdyBody = rdy.length ? rdy.slice(0, rdyCut?RDY_CAP:rdy.length).map(readyDoeCardHTML).join('')+(rdyCut?`<button class="btn btn-secondary" id="nnReadyAll">Show all ${rdy.length} does</button>`:(rdy.length>RDY_CAP?`<button class="btn btn-secondary" id="nnReadyLess">Show fewer</button>`:'')) : '<div class="empty">No open does right now.</div>';
   const plBody = (planned.length?planned.map(plannedCardHTML).join(''):'<div class="empty">No breedings planned yet.</div>')+'<button class="btn btn-secondary" style="width:100%; margin-top:4px;" id="nnPlanBtn">+ Plan a breeding</button>';
   if(!flowUiOn){
     main.innerHTML=litterToggleHTML()+flowToggleHTML()+litBody;
@@ -4491,6 +4499,8 @@ function renderNewNursery(main){
   main.querySelectorAll('[data-nnnest]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation();
     const id=b.dataset.nnnest, r=rabbits.find(x=>x.id===id); if(!r) return; const prev=r.nestBoxAckDate; r.nestBoxAckDate=todayStr(); saveData(); render();
     showUndoToast(r.name+"'s nest box marked done", ()=>{ const rr=rabbits.find(x=>x.id===id); if(rr){ rr.nestBoxAckDate=prev; saveData(); render(); } }); });
+  { const ra=main.querySelector('#nnReadyAll'); if(ra) ra.onclick=()=>{ nnReadyAll=true; render(); };
+    const rl=main.querySelector('#nnReadyLess'); if(rl) rl.onclick=()=>{ nnReadyAll=false; render(); }; }
   const pb=main.querySelector('#nnPlanBtn'); if(pb) pb.onclick=()=>openAddPlannedSheet();
   wireConvertButtons(main);
   bindLitterToggle(main); bindFlowToggle(main);
@@ -4595,13 +4605,15 @@ function openLitterDatesSheet(r, after){
   });
   document.getElementById('ld-done').onclick=()=>{ closeSheet(); if(after) after(); };
 }
+// a kit counts as "has its own profile" only while that rabbit still exists; if the profile was deleted the kit is a normal kit again
+function kitLinked(k){ return !!(k && k.individualId && rabbits.some(z=>z.id===k.individualId)); }
 function babyRowInner(k,i){
-  const lw=kitLastWeight(k), tg=k.individualId?'Junior':(k.tag||(k.forSale?'For sale':''));
+  const lw=kitLastWeight(k), tg=kitLinked(k)?'Junior':(k.individualId?'Profile deleted':(k.tag||(k.forSale?'For sale':'')));
   const sex=k.sex==='buck'?'Buck':k.sex==='doe'?'Doe':'', col=k.color||'';
   const title=(sex||col)?[sex,col].filter(Boolean).join(' · '):'Tap to set sex & color';
   return `<span class="lp-num ${k.sex==='buck'?'bk':k.sex==='doe'?'dn':''}">${k.num||i+1}</span>
     <span class="lp-bmid"><b class="${(sex||col)?'':'lp-muted'}">${esc(title)}</b>${k.earNumber?`<span class="lp-ear-s">Ear # ${esc(k.earNumber)}</span>`:''}</span>${lw?`<span class="lp-wt">${esc(ozText(lw.oz))}</span>`:''}
-    ${tg?`<em class="nn-tag ${k.individualId?'t-keep':tagClass(tg)}">${esc(tg)}</em>`:''}<span class="lp-chev">&rsaquo;</span>`;
+    ${tg?`<em class="nn-tag ${kitLinked(k)?'t-keep':tagClass(tg)}">${esc(tg)}</em>`:''}<span class="lp-chev">&rsaquo;</span>`;
 }
 function kitMoreHTML(dam,k){
   const ws=(k.weights||[]).map((w,wi)=>({w,wi})).sort((a,b)=>b.w.date.localeCompare(a.w.date));
@@ -4677,7 +4689,7 @@ function openLitterPage(damId){
       ${dateLine?`<button class="lp-dates" id="lp-dates">${dateLine} <span>Change</span></button>`:''}
     </div>
     <div class="lp-h">Kits${unweighed?' <button class="lp-weigh" id="lp-weigh">Weigh</button>':''}</div>
-    <div class="lp-babies">${kits.map((k,i)=>`<div class="lp-bw"><div class="lp-sw">${k.individualId?'':'<button type="button" class="lp-sw-del" aria-label="Delete this kit">Delete</button>'}<div class="lp-front"><button class="lp-baby" data-kit="${i}">${babyRowInner(k,i)}</button>${k.individualId?'':`<button type="button" class="lp-x" aria-label="Remove this kit" title="Remove this kit">&times;</button>`}</div></div>${k.individualId?'':babyEditorHTML(k,i)}</div>`).join('')}</div>
+    <div class="lp-babies">${kits.map((k,i)=>`<div class="lp-bw"><div class="lp-sw">${kitLinked(k)?'':'<button type="button" class="lp-sw-del" aria-label="Delete this kit">Delete</button>'}<div class="lp-front"><button class="lp-baby" data-kit="${i}">${babyRowInner(k,i)}</button>${kitLinked(k)?'':`<button type="button" class="lp-x" aria-label="Remove this kit" title="Remove this kit">&times;</button>`}</div></div>${kitLinked(k)?'':babyEditorHTML(k,i)}</div>`).join('')}</div>
     <details class="lp-fold" ${lostN?'open':''}><summary>Losses <span>${lostN||'none'}</span></summary>
       ${losses.map(l=>`<div class="st-row" style="padding:8px 0;"><div><b>${esc(l.tag)}</b><div class="card-sub">${nb(fmtShort(l.date))}${l.notes?' &middot; '+esc(l.notes):''}</div></div><button class="btn btn-secondary btn-sm" data-editloss="${l.id}">Edit</button></div>`).join('')}
       <button class="btn btn-secondary btn-sm" id="lp-addloss" style="margin-top:6px;">+ Record a loss</button></details>
@@ -4689,7 +4701,7 @@ function openLitterPage(damId){
   document.getElementById('lp-less').onclick=()=>{
     const ks=r.litterKits||[], last=ks[ks.length-1];
     if(!last) return;
-    if(last.individualId){ showToast('The last kit has its own profile, so it can\'t be removed here'); return; }
+    if(kitLinked(last)){ showToast('The last kit has its own profile, so it can\'t be removed here'); return; }
     (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:last});
     r.litterKits=ks.slice(0,-1); litterChanged(r); openLitterPage(damId); showToast('Removed the last kit. It\'s in Recently deleted if you need it back');
   };
@@ -4700,7 +4712,7 @@ function openLitterPage(damId){
   document.querySelectorAll('.lp-bw').forEach((w,i)=>{
     const k=kits[i], btn=w.querySelector('.lp-baby'), ed=w.querySelector('.lp-bed');
     btn.onclick=()=>{
-      if(k.individualId){ const x=rabbits.find(z=>z.id===k.individualId); if(x){ closeSheet(); openRabbitProfile(x); } return; }
+      if(kitLinked(k)){ const x=rabbits.find(z=>z.id===k.individualId); if(x){ closeSheet(); openRabbitProfile(x); } return; }
       const wasOpen=!ed.hidden;
       document.querySelectorAll('.lp-bed').forEach(e=>{ e.hidden=true; e.parentNode.classList.remove('open'); });
       if(!wasOpen){ ed.hidden=false; w.classList.add('open'); }
@@ -6200,7 +6212,7 @@ function litterSummaryText(r){
 }
 function openKindledSheet(r, editing){
   const existing = editing && r.litterKits ? r.litterKits : [];
-  const linkedCount = existing.filter(k=>k.individualId).length;
+  const linkedCount = existing.filter(k=>kitLinked(k)).length;
   const wasBred = r.status==='pregnant';
   const needsBuck = !editing && !wasBred;    // doe was never marked bred: we'll work that out for her
   const d = r.litterDead||{DOA:0,peanut:0,passed:0};
@@ -6269,7 +6281,7 @@ function openKindledSheet(r, editing){
     if(editing){
       kits = existing.map(k=>Object.assign({}, k, {id:k.id||uid(), sex:k.sex||'', color:k.color||'', forSale:!!k.forSale, individualId:k.individualId||null}));   // keeps tags, weights, sale, markings and numbers
       while(kits.length<st.alive) kits.push(blankKit());
-      for(let i=kits.length-1; i>=0 && kits.length>st.alive; i--){ if(!kits[i].individualId){ (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:kits[i]}); kits.splice(i,1); } }
+      for(let i=kits.length-1; i>=0 && kits.length>st.alive; i--){ if(!kitLinked(kits[i])){ (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:kits[i]}); kits.splice(i,1); } }
     } else {
       kits = Array.from({length:st.alive}, blankKit);
     }
