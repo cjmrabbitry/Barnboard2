@@ -171,6 +171,11 @@
   .lp-bl{ font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted,#6b7280); margin:12px 0 6px; }
   .lp-bed .lp-color{ width:100%; box-sizing:border-box; }
   .lp-cchips{ margin-top:8px; } .lp-cchips .nn-chip{ padding:6px 12px; font-size:13px; }
+  .lp-hint{ font-weight:400; text-transform:none; letter-spacing:0; font-size:12px; color:var(--muted,#6d5f70); }
+  .lp-ear-s{ display:block; font-size:12px; color:var(--muted,#6d5f70); font-weight:600; }
+  .lp-xin{ margin-top:6px; padding:10px 12px; border:1px solid var(--line); border-radius:12px; background:#fff; }
+  .lp-wrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:6px 0; }
+  .lp-wrow input{ max-width:110px; }
   .lp-more{ display:block; width:100%; margin-top:14px; background:none; border:none; color:var(--navy); font-weight:700; font-size:14px; text-align:left; cursor:pointer; padding:6px 0; }
   .lp-num{ flex:none; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-family:'Jost',system-ui,sans-serif; font-weight:700; font-size:16px; background:var(--page); border:1.5px solid var(--line-strong,var(--line)); color:var(--navy); }
   .lp-num.bk{ background:#dbe6f7; border-color:#a9c0e6; } .lp-num.dn{ background:#f9e0e6; border-color:#e8b5c2; }
@@ -2669,7 +2674,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-23-inlinecount';
+const APP_VERSION = '2026-10-23-reserved';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3841,7 +3846,7 @@ function sixMonthDate(dob){
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
 function isUnderSixMonths(r){ const s=r.dob?sixMonthDate(r.dob):null; return !!s && todayStr()<s; }
-function inJuniors(r){ return isUnderSixMonths(r) && !['pregnant','nursing'].includes(r.status); }
+function inJuniors(r){ return isUnderSixMonths(r) && !r.movedUp && !['pregnant','nursing'].includes(r.status); }   // movedUp = she chose to move this junior up early
 function isJuniorReady(r){ return r.status==='growing' && r.dob && !isUnderSixMonths(r); }
 function bucksCoverage(n){ return rabbits.filter(r=>r.sex==='doe' && r.partner===n && ['pregnant','nursing'].includes(r.status)); }
 
@@ -4135,7 +4140,7 @@ function autoGraduateJuniors(){
   rabbits.forEach(r=>{ if(isJuniorReady(r)){ r.status = r.sex==='doe'?'open':'available'; if(!r.graduatedDate) r.graduatedDate = todayStr(); changed=true; } });
   // Anything under 6 months old is a junior, no exceptions (except does that are
   // already bred or nursing, who stay visible with the breeding does).
-  rabbits.forEach(r=>{ if(['open','available'].includes(r.status) && isUnderSixMonths(r)){ r.status='growing'; changed=true; } });
+  rabbits.forEach(r=>{ if(['open','available'].includes(r.status) && isUnderSixMonths(r) && !r.movedUp){ r.status='growing'; changed=true; } });
   if(changed) saveData();
 }
 function render(){
@@ -4210,7 +4215,8 @@ function openCardMore(r){
   else if(r.status==='growing' || r.sex==='buck'){ }
   else if(r.sex==='doe'){ items.push(['plan','Plan a breeding']); if(r.status==='open'||r.status==='resting') items.push(['kindled','Kindled']); }
   items.push(['wins','Add win'],['history','Breeding history'],['relatives','Relatives'],['edit','Edit']);
-  if(r.status==='growing' && !isUnderSixMonths(r)) items.unshift(['graduate','Move to '+(r.sex==='doe'?'Does':'Bucks')]);
+  if(r.status==='growing') items.unshift(['graduate','Move to '+(r.sex==='doe'?'Does':'Bucks')+(isUnderSixMonths(r)?' now':'')]);
+  if(r.movedUp && isUnderSixMonths(r) && r.status!=='growing') items.unshift(['unmove','Move back to Juniors']);
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>${esc(r.name)}</h2>
     <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px;">${items.map(([k,l])=>`<button class="btn btn-secondary" style="width:100%;" data-more="${k}">${l}</button>`).join('')}</div>`);
   document.querySelectorAll('#sheet [data-more]').forEach(b=>b.onclick=()=>{
@@ -4354,7 +4360,7 @@ function newNurseryCardHTML(r, mode){
   const actions = wean+`<button class="btn btn-secondary" data-nnped="${r.id}">Pedigree</button>`;
   return `<div class="card nn-card" data-nnopen="${r.id}" style="cursor:pointer;"><div class="nn-top"><div><div class="card-name">${esc(shortName(r.name))}${litterSireName(r)?' &times; '+esc(shortName(litterSireName(r))):''}&rsquo;s Litter</div><div class="card-sub">Born ${nb(fmtShort(r.litterBornDate))} &middot; <b>${nb(esc(litterAgeText(r.litterBornDate))+' old')}</b></div></div>
       <div class="nn-age">${nnRingHTML(r)}<span class="nn-chev" aria-hidden="true">&rsaquo;</span></div></div>
-    <div class="nn-row"><button type="button" class="nn-cnt" data-nncnt="-1:${r.id}" aria-label="One fewer kit">&minus;</button><span class="nn-num">${n} ${n===1?'kit':'kits'}</span><button type="button" class="nn-cnt plus" data-nncnt="1:${r.id}" aria-label="One more kit">+</button>${(!kitList&&forSale)?`<em class="nn-tag t-sale">${forSale} for sale</em>`:''}${(!kitList&&reserved)?`<em class="nn-tag t-res">${reserved} reserved</em>`:''}${r.status==='nursing'?'':'<em class="nn-tag t-keep">Weaned</em>'}</div>
+    <div class="nn-row"><span class="nn-num">${n} ${n===1?'kit':'kits'}</span>${(!kitList&&forSale)?`<em class="nn-tag t-sale">${forSale} for sale</em>`:''}${(!kitList&&reserved)?`<em class="nn-tag t-res">${reserved} reserved</em>`:''}${r.status==='nursing'?'':'<em class="nn-tag t-keep">Weaned</em>'}</div>
     ${kitList || (dkOpen?'':`<div class="card-sub">Wean ${nb(fmtShort(r.weanDate))} &middot; Ready to go ${nb(fmtShort(r.sellDate))}</div>`)}
     ${dropdown}
     ${dkOpen?`<div class="card-sub" style="margin-top:8px;">Wean ${nb(fmtShort(r.weanDate))} &middot; Ready to go ${nb(fmtShort(r.sellDate))}</div>`:''}
@@ -4393,16 +4399,6 @@ function renderNewNursery(main){
   main.innerHTML=`${litterToggleHTML()}${body}`;
   main.querySelectorAll('[data-nnopen]').forEach(c=>c.onclick=(ev)=>{ if(ev.target.closest('button')) return; openLitterPage(c.dataset.nnopen); });
   main.querySelectorAll('[data-nnkits]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const id=b.dataset.nnkits; if(nnKitsOpen.has(id)) nnKitsOpen.delete(id); else nnKitsOpen.add(id); render(); });
-  main.querySelectorAll('[data-nncnt]').forEach(b=>b.onclick=(ev)=>{
-    ev.stopPropagation();
-    const [d,id]=b.dataset.nncnt.split(':'); const r=rabbits.find(x=>x.id===id); if(!r) return;
-    if(d==='1'){ addKitToLitter(r); showToast('Added a kit'); return; }
-    const kits=r.litterKits||[]; let i=kits.length-1;
-    if(i<0) return;
-    if(kits[i].individualId){ showToast('The last kit has its own profile, so it can\'t be removed here'); return; }
-    (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:kits[i]});
-    r.litterKits=kits.slice(0,i); litterChanged(r); showToast('Removed a kit. It\'s in Recently deleted if you need it back');
-  });
   main.querySelectorAll('[data-nnwean]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===b.dataset.nnwean); if(r) openWeanPlanSheet(r); });
   main.querySelectorAll('[data-nnped]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===b.dataset.nnped); if(r) openLitterPedigreeSheet(r); });
   bindLitterToggle(main);
@@ -4512,8 +4508,24 @@ function babyRowInner(k,i){
   const sex=k.sex==='buck'?'Buck':k.sex==='doe'?'Doe':'', col=k.color||'';
   const title=(sex||col)?[sex,col].filter(Boolean).join(' · '):'Tap to set sex & color';
   return `<span class="lp-num ${k.sex==='buck'?'bk':k.sex==='doe'?'dn':''}">${k.num||i+1}</span>
-    <span class="lp-bmid"><b class="${(sex||col)?'':'lp-muted'}">${esc(title)}</b></span>${lw?`<span class="lp-wt">${esc(ozText(lw.oz))}</span>`:''}
+    <span class="lp-bmid"><b class="${(sex||col)?'':'lp-muted'}">${esc(title)}</b>${k.earNumber?`<span class="lp-ear-s">Ear # ${esc(k.earNumber)}</span>`:''}</span>${lw?`<span class="lp-wt">${esc(ozText(lw.oz))}</span>`:''}
     ${tg?`<em class="nn-tag ${k.individualId?'t-keep':tagClass(tg)}">${esc(tg)}</em>`:''}<span class="lp-chev">&rsaquo;</span>`;
+}
+function kitMoreHTML(dam,k){
+  const ws=(k.weights||[]).map((w,wi)=>({w,wi})).sort((a,b)=>b.w.date.localeCompare(a.w.date));
+  const ph=kitPhotoOf(dam,k);
+  return `<div class="lp-xin">
+    <div class="lp-bl">Weights <span class="lp-hint">(in ounces)</span></div>
+    ${ws.map(x=>`<div class="lp-wrow"><span class="card-sub">${fmtDate(x.w.date)}</span><input type="number" step="0.1" min="0" inputmode="decimal" data-wi="${x.wi}" value="${esc(String(x.w.oz))}" aria-label="Weight in ounces"></div>`).join('')}
+    <div class="lp-wrow"><span class="card-sub">Today</span><input type="number" step="0.1" min="0" inputmode="decimal" class="lp-wnew" placeholder="oz"><button type="button" class="btn btn-secondary btn-sm lp-wadd">Add weight</button></div>
+    <div class="lp-bl">Photo</div>
+    ${ph?`<div style="margin-bottom:8px;"><img src="${ph.dataUrl}" alt="" style="max-width:100%; max-height:180px; border-radius:12px;"></div>`:''}
+    <div class="nn-chips"><button type="button" class="nn-chip lp-photo">${ph?'Replace photo':'+ Add photo'}</button>${ph?'<button type="button" class="nn-chip lp-photo-del">Hide photo</button>':''}</div>
+    <input type="file" accept="image/*" class="lp-file" style="display:none;">
+    <div class="lp-bl">Markings</div>
+    <div class="field"><textarea class="lp-marks" rows="2" placeholder="e.g. white blaze, left ear tip">${esc(k.markings||'')}</textarea></div>
+    <button type="button" class="lp-more lp-close">Close &#8963;</button>
+  </div>`;
 }
 function babyEditorHTML(k,i){
   const tg=k.tag||(k.forSale?'For sale':'');
@@ -4522,9 +4534,12 @@ function babyEditorHTML(k,i){
     <div class="seg lp-sex">${[['doe','Doe'],['buck','Buck'],['','Not sure']].map(([v,l])=>`<button type="button" data-sx="${v}" class="${(k.sex||'')===v?'on':''}">${l}</button>`).join('')}</div>
     <div class="lp-bl">Color</div>
     <div class="field"><input class="lp-color" value="${esc(k.color||'')}" placeholder="Type a color" autocomplete="off"></div>
+    <div class="lp-bl">Ear # / ID <span class="lp-hint">(goes with the kit if it stays in your herd)</span></div>
+    <div class="field"><input class="lp-ear" value="${esc(k.earNumber||'')}" placeholder="Type an ear # or ID" autocomplete="off"></div>
     <div class="lp-bl">Tag <button type="button" class="lp-edtags">Edit tags</button></div>
     <div class="nn-chips lp-tags"><button type="button" class="nn-chip ${tg===''?'on':''}" data-tg="">None</button>${allKitTags().map(t=>`<button type="button" class="nn-chip ${tg===t?'on':''}" data-tg="${esc(t)}">${esc(t)}</button>`).join('')}</div>
-    <button type="button" class="lp-more" data-more="${i}">Weight, photo &amp; markings &rsaquo;</button>
+    <button type="button" class="lp-more" data-more="${i}" aria-expanded="false"><span class="lp-mt">Weight, photo &amp; markings</span> <span class="lp-mc">&rsaquo;</span></button>
+    <div class="lp-xp" hidden></div>
     <button type="button" class="lit-delete" data-rmkit="${i}" style="margin-top:8px;">Added by mistake? Remove this kit</button>
   </div>`;
 }
@@ -4545,7 +4560,7 @@ function openLitterPage(damId){
     <h2>${esc(shortName(r.name))}${sireN?' &times; '+esc(shortName(sireN)):''}&rsquo;s Litter</h2>
     <div class="card-sub" style="margin:-8px 0 12px;">Mom: <button class="nn-link" id="lp-mom">${esc(r.name)}</button> &middot; Dad: ${sire?`<button class="nn-link" id="lp-dad">${esc(sire.name)}</button>`:esc(sireN||'not recorded')}</div>
     <div class="lit-card lp-hero">
-      <div class="lp-count"><span class="nn-big" style="font-size:64px;">${kits.length}</span><div class="lp-count-l">${kits.length===1?'kit':'kits'}</div></div>
+      <div class="lp-count"><div style="display:flex; align-items:center; justify-content:center; gap:22px;"><button type="button" class="nn-cnt" id="lp-less" aria-label="One fewer kit">&minus;</button><span class="nn-big" style="font-size:64px;">${kits.length}</span><button type="button" class="nn-cnt plus" id="lp-more" aria-label="One more kit">+</button></div><div class="lp-count-l">${kits.length===1?'kit':'kits'}</div></div>
       <div class="lp-agebar"><span>Born ${nb(esc(fmtShort(r.litterBornDate)))}</span><i></i><b>${esc(litterAgeText(r.litterBornDate))} old</b></div>
       <div class="lp-next">${esc(next)}</div>
       ${nursing?`<div class="lp-bar" aria-hidden="true"><div style="width:${Math.max(4,Math.min(100,Math.round(age/42*100)))}%"></div></div>`:''}
@@ -4561,6 +4576,14 @@ function openLitterPage(damId){
     ${pr?`<details class="lp-fold"><summary>This pairing <span>${pr.litters} litter${pr.litters===1?'':'s'}</span></summary><div class="card-sub">${esc(r.name)} × ${esc(litterSireName(r))}: ${pr.litters} litter${pr.litters===1?'':'s'}, ${pr.born} born (about ${pr.avg} per litter), ${pr.alive} still counted alive.</div></details>`:''}
     <div class="lp-foot"><button class="btn btn-secondary" id="lp-edit">Edit litter</button><button class="btn btn-secondary" id="lp-ped">Pedigree</button></div></div>`);
   const again=()=>openLitterPage(damId);
+  document.getElementById('lp-more').onclick=()=>{ addKitToLitter(r); openLitterPage(damId); showToast('Added a kit'); };
+  document.getElementById('lp-less').onclick=()=>{
+    const ks=r.litterKits||[], last=ks[ks.length-1];
+    if(!last) return;
+    if(last.individualId){ showToast('The last kit has its own profile, so it can\'t be removed here'); return; }
+    (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:last});
+    r.litterKits=ks.slice(0,-1); litterChanged(r); openLitterPage(damId); showToast('Removed the last kit. It\'s in Recently deleted if you need it back');
+  };
   document.getElementById('lp-mom').onclick=()=>{ closeSheet(); openRabbitProfile(r); };
   const dad=document.getElementById('lp-dad'); if(dad) dad.onclick=()=>{ closeSheet(); openRabbitProfile(sire); };
   const w=document.getElementById('lp-wean'); if(w) w.onclick=()=>openWeanPlanSheet(r);
@@ -4584,7 +4607,27 @@ function openLitterPage(damId){
       if(t==='Sold'||t==='Reserved'){ syncLitterEntry(r); saveData(); openKitSaleSheet(k.id, again); return; }
       commitBaby(i,w);
     });
-    ed.querySelector('[data-more]').onclick=()=>openKitTagSheet(r.id,i);
+    const ei=ed.querySelector('.lp-ear');
+    const saveEar=()=>{ const v=ei.value.trim(); if(v===(k.earNumber||'')) return;
+      const lc=v.toLowerCase();
+      const clash=v && (rabbits.some(x=>!x.external && x.earNumber && String(x.earNumber).trim().toLowerCase()===lc) || rabbits.some(d=>(d.litterKits||[]).some(o=>o!==k && o.earNumber && String(o.earNumber).trim().toLowerCase()===lc)));
+      k.earNumber=v; commitBaby(i,w); if(clash) showToast('Saved. Heads up: another rabbit or kit already has that ear #'); };
+    ei.addEventListener('change',saveEar); ei.addEventListener('blur',saveEar);
+    const mb=ed.querySelector('[data-more]'), xp=ed.querySelector('.lp-xp');
+    const saveX=()=>{ syncLitterEntry(r); r.lastLitterSummary=litterSummaryText(r); saveData(); w.querySelector('.lp-baby').innerHTML=babyRowInner(k,i); render(); };
+    const wireX=()=>{
+      xp.innerHTML=kitMoreHTML(r,k);
+      xp.querySelectorAll('[data-wi]').forEach(inp=>inp.onchange=()=>{ const v=parseFloat(inp.value); const wt=k.weights[+inp.dataset.wi]; if(!wt) return; if(!isFinite(v)||v<=0){ inp.value=wt.oz; showToast('Type a weight in ounces'); return; } wt.oz=v; saveX(); });
+      xp.querySelector('.lp-wadd').onclick=()=>{ const inp=xp.querySelector('.lp-wnew'); const v=parseFloat(inp.value); if(!isFinite(v)||v<=0){ showToast('Type a weight in ounces'); return; } (k.weights=k.weights||[]).push({date:todayStr(), oz:v}); saveX(); wireX(); };
+      const mk=xp.querySelector('.lp-marks'); mk.onblur=()=>{ const v=mk.value.trim(); if(v!==(k.markings||'')){ k.markings=v; saveX(); } };
+      const fi=xp.querySelector('.lp-file');
+      xp.querySelector('.lp-photo').onclick=()=>fi.click();
+      fi.onchange=async(e)=>{ const f=e.target.files[0]; e.target.value=''; if(!f) return; if(await addKitPhoto(r,k,f)){ wireX(); } };
+      const pd=xp.querySelector('.lp-photo-del'); if(pd) pd.onclick=()=>armConfirm(pd,'Tap again to hide',()=>{ r.photos=(r.photos||[]).map(pp=>(pp.category==='Kit'&&pp.kitId===k.id&&!pp.removed)?Object.assign({},pp,{removed:true}):pp); saveData(); wireX(); });
+      xp.querySelector('.lp-close').onclick=()=>setX(false);
+    };
+    const setX=(on)=>{ if(on){ wireX(); } xp.hidden=!on; mb.setAttribute('aria-expanded',on?'true':'false'); mb.querySelector('.lp-mc').innerHTML=on?'&#8963;':'&rsaquo;'; };
+    mb.onclick=()=>setX(xp.hidden);
     const rmk=ed.querySelector('[data-rmkit]');
     if(rmk) rmk.onclick=()=>armConfirm(rmk,'Tap again to confirm',()=>{
       (r.removedKits=r.removedKits||[]).push({id:uid(), removedAt:todayStr(), litterBorn:r.litterBornDate, kit:k});
@@ -4696,7 +4739,7 @@ function openWeanPlanSheet(r){
         x.k.sex=x.sex;
         let nm=(x.name||'').trim() || autoName(x);
         if(!(x.name||'').trim() && rabbits.some(z=>nameKey(z.name)===nameKey(nm))) nm+=` (${r.litterBornDate})`;
-        const kit=blankRabbit({ name:nm, sex:x.sex, breed:r.breed, color:x.k.color||'', dob:r.litterBornDate, sireName:litterSireName(r), damName:r.name, status:'growing', forSale:(x.tag==='For sale') });
+        const kit=blankRabbit({ name:nm, sex:x.sex, breed:r.breed, color:x.k.color||'', dob:r.litterBornDate, sireName:litterSireName(r), damName:r.name, status:'growing', earNumber:x.k.earNumber||'', forSale:(x.tag==='For sale') });
         rabbits.push(kit); x.k.individualId=kit.id; carryKitHistory(r,x.k,kit); kit.kitHistoryCopied=true;
         setKitTag(x.k, x.tag || ((x.k.tag && x.k.tag!=='For sale' && x.k.tag!=='Reserved') ? x.k.tag : 'Keeping'));
       });
@@ -4716,7 +4759,7 @@ function convertOldKitsToJuniors(r, sexes){
     let name=`${r.name} x ${litterSireName(r)||'?'} — ${sx==='buck'?'Buck':'Doe'} ${x.k.num||x.i+1}`;
     if(rabbits.some(z=>nameKey(z.name)===nameKey(name))) name+=` (${r.litterBornDate})`;
     x.k.sex=sx;
-    const kit=blankRabbit({ name, sex:sx, breed:r.breed, color:x.k.color||'', dob:r.litterBornDate, sireName:litterSireName(r), damName:r.name, status:'growing', forSale:(x.k.tag==='For sale') });
+    const kit=blankRabbit({ name, sex:sx, breed:r.breed, color:x.k.color||'', dob:r.litterBornDate, sireName:litterSireName(r), damName:r.name, status:'growing', earNumber:x.k.earNumber||'', forSale:(x.k.tag==='For sale') });
     rabbits.push(kit); x.k.individualId=kit.id; carryKitHistory(r,x.k,kit); kit.kitHistoryCopied=true; made++;
   });
   if(made){ syncLitterEntry(r); showToast(made+' kit'+(made===1?'':'s')+' from the last litter became juniors'); }
@@ -4750,6 +4793,90 @@ function soldKitPseudoRabbits(){
   });
   return out;
 }
+// ----- reserved sales: deposits, balance due, and money entries -----
+function reservedItems(){
+  const out=[];
+  rabbits.forEach(r=>{ if(r.status==='reserved' && !r.external) out.push({kind:'rabbit', key:r.id, name:r.name, sale:r.sale||{}, r}); });
+  rabbits.forEach(d=>(d.litterKits||[]).forEach((k,ki)=>{
+    if(k && k.id && !k.individualId && k.tag==='Reserved') out.push({kind:'kit', key:'kit:'+k.id, name:`${d.name}'s litter — kit #${k.num||ki+1}`, sale:k.sale||{}, dam:d, kit:k});
+  }));
+  return out;
+}
+function balanceDueOf(sale){
+  if(!sale || !priceEntered(sale.price)) return null;
+  return parsePriceNum(sale.price)-parsePriceNum(sale.deposit);
+}
+// every dollar received, dated when it came in: a deposit on its date, the rest on the sold date
+function moneyIncomeEntries(){
+  const holders=[];
+  rabbits.forEach(r=>{ if(r.sale && (r.status==='sold'||r.status==='reserved')) holders.push({id:r.id, name:r.name, sale:r.sale, sold:r.status==='sold'}); });
+  soldKitPseudoRabbits().forEach(h=>holders.push({id:h.id, name:h.name, sale:h.sale, sold:true}));
+  reservedItems().filter(x=>x.kind==='kit').forEach(x=>{ if(x.sale && x.sale.deposit) holders.push({id:x.key, name:x.name, sale:x.sale, sold:false}); });
+  const out=[], seen=new Set();
+  holders.forEach(h=>{
+    if(seen.has(h.id)) return; seen.add(h.id);
+    const sl=h.sale, buyer=sl.buyer||'';
+    const dep=priceEntered(sl.deposit)?parsePriceNum(sl.deposit):0;
+    const depDate=sl.depositDate||'';
+    const base={rabbitId:h.id, name:h.name, buyer};
+    if(h.sold && sl.soldDate){
+      if(priceEntered(sl.price)){
+        const total=parsePriceNum(sl.price);
+        if(dep>0 && depDate && depDate!==sl.soldDate){
+          out.push(Object.assign({type:'income', sub:'Deposit', date:depDate, amount:dep}, base));
+          out.push(Object.assign({type:'income', sub:'Balance', date:sl.soldDate, amount:total-dep}, base));
+        } else out.push(Object.assign({type:'income', sub:'', date:sl.soldDate, amount:total}, base));
+      } else if(dep>0 && depDate){
+        out.push(Object.assign({type:'income', sub:'Deposit', date:depDate, amount:dep}, base));
+      }
+    } else if(!h.sold && dep>0 && depDate){
+      out.push(Object.assign({type:'income', sub:'Deposit', date:depDate, amount:dep, reserved:true}, base));
+    }
+  });
+  return out;
+}
+function openMarkPaidSheet(item){
+  const sl=item.sale||{}; const bal=balanceDueOf(sl);
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Mark paid &amp; sold</h2>
+    <div class="card-sub" style="margin-bottom:12px;">${esc(item.name)}${sl.buyer?' &middot; '+esc(sl.buyer):''}${priceEntered(sl.deposit)?' &middot; deposit $'+esc(sl.deposit)+' already received':''}</div>
+    <div class="field"><label>Full sale price ($)</label><input type="number" id="mp-price" value="${esc(sl.price||'')}" placeholder="150"></div>
+    <div class="card-sub" id="mp-bal" style="margin-bottom:10px;"></div>
+    <div class="field"><label>Sold date</label><input type="date" id="mp-sold" value="${todayStr()}"></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" onclick="closeSheet()">Cancel</button><button class="btn btn-primary" id="mp-save">Mark paid &amp; sold</button></div>`);
+  const upd=()=>{ const v=document.getElementById('mp-price').value; const b=priceEntered(v)?parsePriceNum(v)-parsePriceNum(sl.deposit):null; document.getElementById('mp-bal').textContent=b===null?'':('Balance you are collecting now: '+fmtMoney(b)); };
+  document.getElementById('mp-price').addEventListener('input',upd); upd();
+  document.getElementById('mp-save').onclick=()=>{
+    const price=document.getElementById('mp-price').value.trim(), sold=csvParseDate(document.getElementById('mp-sold').value)||'';
+    if(!priceEntered(price)){ showToast('Type the full sale price first'); return; }
+    if(!sold){ showToast('Pick a sold date'); return; }
+    const ns=Object.assign({}, sl, {price, soldDate:sold});
+    if(item.kind==='kit'){
+      item.kit.sale=ns; setKitTag(item.kit,'Sold'); syncLitterEntry(item.dam);
+    } else { item.r.sale=ns; item.r.status='sold'; }
+    saveData(); closeSheet(); render(); showToast('Marked sold. The sale is in Financials');
+  };
+}
+function openReservedSaleSheet(item){ if(item.kind==='kit') openKitSaleSheet(item.kit.id); else openSaleSheet(item.r); }
+function reservedSectionHTML(){
+  const items=reservedItems(); if(!items.length) return '';
+  const owed=items.reduce((n,x)=>{ const b=balanceDueOf(x.sale); return n+(b&&b>0?b:0); },0);
+  return `<div class="section-label">RESERVED &middot; ${items.length}${owed>0?' &middot; '+fmtMoney(owed)+' BALANCE DUE':''}</div>`+items.map(x=>{
+    const sl=x.sale||{}, b=balanceDueOf(sl), hasDep=priceEntered(sl.deposit)&&parsePriceNum(sl.deposit)>0;
+    const money=[ hasDep?('Deposit '+fmtMoney(parsePriceNum(sl.deposit))+(sl.depositDate?' on '+fmtDate(sl.depositDate):'')):'No deposit yet',
+      priceEntered(sl.price)?('Price '+fmtMoney(parsePriceNum(sl.price))):'No price yet' ].join(' &middot; ');
+    return `<div class="card no-tap">
+      <div class="card-top"><div><div class="card-name">${esc(x.name)}</div><div class="card-sub">${sl.buyer?'Reserved for '+esc(sl.buyer):'No buyer name yet'}${sl.pickupDate?' &middot; pickup '+fmtDate(sl.pickupDate):''}</div></div><span class="badge b-reserved">RESERVED</span></div>
+      <div class="card-detail">${money}</div>
+      ${b!==null?`<div style="font-weight:700; margin:4px 0 8px;">${b>0?'Balance due '+fmtMoney(b):'Paid in full'}</div>`:''}
+      <div class="card-actions"><button class="btn btn-primary btn-sm" data-mpay="${esc(x.key)}">Mark paid &amp; sold</button><button class="btn btn-secondary btn-sm" data-resedit="${esc(x.key)}">Edit deposit &amp; sale</button></div>
+    </div>`;
+  }).join('');
+}
+function bindReserved(){
+  const find=key=>reservedItems().find(x=>x.key===key);
+  document.querySelectorAll('[data-mpay]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const it=find(b.dataset.mpay); if(it) openMarkPaidSheet(it); });
+  document.querySelectorAll('[data-resedit]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const it=find(b.dataset.resedit); if(it) openReservedSaleSheet(it); });
+}
 function openKitSaleSheet(kitId, after){
   const f=findKitById(kitId); if(!f) return;
   const {dam,kit}=f; const sl=kit.sale||{};
@@ -4764,7 +4891,7 @@ function openKitSaleSheet(kitId, after){
     const dep=document.getElementById('ks-dep').value.trim(), sold=csvParseDate(document.getElementById('ks-sold').value)||'';
     if(!dep && !sold){ showToast('Add a sold date, or a deposit to reserve'); return; }
     kit.sale={ buyer:document.getElementById('ks-buyer').value.trim(), price:document.getElementById('ks-price').value.trim(), deposit:dep,
-      depositDate:csvParseDate(document.getElementById('ks-depdate').value)||'', soldDate:sold, pickupDate:csvParseDate(document.getElementById('ks-pick').value)||'', notes:document.getElementById('ks-notes').value.trim() };
+      depositDate:csvParseDate(document.getElementById('ks-depdate').value)||(dep?todayStr():''), soldDate:sold, pickupDate:csvParseDate(document.getElementById('ks-pick').value)||'', notes:document.getElementById('ks-notes').value.trim() };
     setKitTag(kit, sold?'Sold':'Reserved');
     syncLitterEntry(dam); saveData(); closeSheet(); render(); showToast(sold?'Sale recorded in Financials':'Reserved');
     if(after) after();
@@ -5868,7 +5995,8 @@ function runCardAct(act,r,btn){
       else if(act==='rebred'||act==='bred') openBreedSheet(r);
       else if(act==='plan') openAddPlannedSheet(r.id);
       else if(act==='wean'){ if(litterUiOn){ openWeanPlanSheet(r); } else { r.status='open'; saveData(); render(); showToast(r.name+' weaned'); } }
-      else if(act==='graduate'){ if(isUnderSixMonths(r)){ showToast(r.name+' stays in Juniors until '+fmtDate(sixMonthDate(r.dob))); return; } r.status = r.sex==='doe'?'open':'available'; saveData(); render(); showToast(r.name+' moved to '+(r.sex==='doe'?'Does':'Bucks')); }
+      else if(act==='unmove'){ r.status='growing'; r.movedUp=false; saveData(); render(); showToast(r.name+' moved back to Juniors'); }
+      else if(act==='graduate'){ if(isUnderSixMonths(r)) r.movedUp=true; if(!r.graduatedDate) r.graduatedDate=todayStr(); r.status = r.sex==='doe'?'open':'available'; saveData(); render(); showToast(r.name+' moved to '+(r.sex==='doe'?'Does':'Bucks')); }
       else if(act==='unarchive') openUnarchive(r);
       else if(act==='edit') openEditSheet(r);
       else if(act==='pedigree') openRabbitProfile(r,'pedigree');
@@ -6233,7 +6361,7 @@ function openSaleSheet(r){
     const dep=document.getElementById('f-dep').value.trim(), sold=csvParseDate(document.getElementById('f-sold').value)||'';
     if(!dep && !sold){ showToast('Add a sold date, or a deposit to reserve'); return; }
     if(!r.prevStatus && isActive(r)) r.prevStatus=r.status;
-    r.sale={ deposit:dep, depositDate:csvParseDate(document.getElementById('f-depdate').value)||'', soldDate:sold,
+    r.sale={ deposit:dep, depositDate:csvParseDate(document.getElementById('f-depdate').value)||(dep?todayStr():''), soldDate:sold,
       pickupDate:csvParseDate(document.getElementById('f-pickup').value)||'', buyer:document.getElementById('f-buyer').value.trim(),
       price:document.getElementById('f-price').value.trim(), notes:document.getElementById('f-salenotes').value.trim() };
     r.status = sold ? 'sold' : 'reserved';
@@ -8979,14 +9107,15 @@ function openRabbitPickSheet(title, list, onPick, note){
   document.getElementById('rp-q').addEventListener('input',draw); draw();
 }
 function renderForSale(main){
-  const rabbitsForSale = rabbits.filter(r=>r.forSale && r.status!=='sold' && !isArchived(r) && r.status!=='external');
+  const rabbitsForSale = rabbits.filter(r=>r.forSale && r.status!=='sold' && r.status!=='reserved' && !isArchived(r) && r.status!=='external');
+  const resHTML = reservedSectionHTML();
   const litterKitRows = [];
   rabbits.forEach(d=>{ if(d.sex==='doe'&&d.litterKits) d.litterKits.forEach((k,i)=>{ if(k.forSale && !k.individualId) litterKitRows.push({dam:d, kit:k, idx:i}); }); });
   const wlBtn = litterUiOn ? `<button class="btn btn-secondary" style="width:100%; margin-bottom:12px;" id="wlOpenBtn">Waitlist (${waitlist.filter(w=>!w.status||w.status==='waiting'||w.status==='contacted').length})</button>` : '';
   const bindWl=()=>{ const b=document.getElementById('wlOpenBtn'); if(b) b.onclick=openWaitlistSheet; };
   if(!rabbitsForSale.length && !litterKitRows.length){
-    main.innerHTML = wlBtn+`<div class="empty">Nothing marked for sale right now.<br>Toggle "Mark for sale" from a rabbit's Edit screen, or "For sale" on a kit's Litters card.</div>`;
-    bindWl();
+    main.innerHTML = wlBtn+`<div class="empty">Nothing marked for sale right now.<br>Toggle "Mark for sale" from a rabbit's Edit screen, or "For sale" on a kit's Litters card.</div>`+resHTML;
+    bindWl(); bindReserved();
     return;
   }
   let h=wlBtn;
@@ -9013,8 +9142,9 @@ function renderForSale(main){
           <button class="btn btn-secondary btn-sm" data-act="litterpedigree" data-id="${dam.id}">Litter pedigree</button>
         </div></div>`).join('');
   }
+  h += resHTML;
   main.innerHTML = h;
-  bindWl();
+  bindWl(); bindReserved();
   attachCardEvents();
 }
 
@@ -9026,13 +9156,14 @@ function moneyActivityForPeriod(period){
   const soldWithPrice = soldInPeriod.filter(r=>priceEntered(r.sale.price));
   const soldNoPrice = soldInPeriod.filter(r=>!priceEntered(r.sale.price));
   const expensesInPeriod = expenses.filter(e=>inMoneyPeriod(e.date, period));
-  return {soldWithPrice, soldNoPrice, expensesInPeriod};
+  const incomeEntries = moneyIncomeEntries().filter(e=>inMoneyPeriod(e.date, period));
+  return {soldWithPrice, soldNoPrice, expensesInPeriod, incomeEntries};
 }
 function renderMoney(main){
   const period = currentMoneyPeriod;
-  const {soldWithPrice, soldNoPrice, expensesInPeriod} = moneyActivityForPeriod(period);
+  const {soldWithPrice, soldNoPrice, expensesInPeriod, incomeEntries} = moneyActivityForPeriod(period);
 
-  const incomeTotal = soldWithPrice.reduce((sum,r)=>sum+parsePriceNum(r.sale.price),0);
+  const incomeTotal = incomeEntries.reduce((sum,e)=>sum+e.amount,0);
   const expenseTotal = expensesInPeriod.reduce((sum,e)=>sum+(Number(e.amount)||0),0);
   const net = incomeTotal - expenseTotal;
 
@@ -9041,7 +9172,7 @@ function renderMoney(main){
   const catRows = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
 
   const activity = [
-    ...soldWithPrice.map(r=>({type:'income', date:r.sale.soldDate, amount:parsePriceNum(r.sale.price), rabbitId:r.id, name:r.name, buyer:r.sale.buyer||''})),
+    ...incomeEntries,
     ...expensesInPeriod.map(e=>({type:'expense', date:e.date, amount:Number(e.amount)||0, id:e.id, category:e.category||'Other', note:e.note||''}))
   ].sort((a,b)=> (b.date||'').localeCompare(a.date||''));
 
@@ -9078,15 +9209,16 @@ function renderMoney(main){
     h += `</div>`;
   }
 
+  h += reservedSectionHTML();
   h += `<div class="section-label">ACTIVITY</div>`;
   if(!activity.length){
     h += `<div class="empty">Nothing here for this period yet. Tap "+ Add expense" when you buy feed, wire, or supplies. Rabbit sales show up on their own once you mark a rabbit sold with a price.</div>`;
   } else {
     h += activity.map(a=>{
       if(a.type==='income'){
-        return `<div class="card" data-openprofile="${a.rabbitId}" style="padding:12px 14px;">
+        return `<div class="card" ${a.sub?`data-opensale="${esc(a.rabbitId)}"`:`data-openprofile="${esc(a.rabbitId)}"`} style="padding:12px 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-            <div><div class="card-name" style="font-size:14px;">${esc(a.name)}</div><div class="card-sub">${a.buyer?('Sold to '+esc(a.buyer)+' &middot; '):''}${fmtDate(a.date)}</div></div>
+            <div><div class="card-name" style="font-size:14px;">${a.sub?esc(a.sub)+' &middot; ':''}${esc(a.name)}</div><div class="card-sub">${a.buyer?((a.sub==='Deposit'?'From ':'Sold to ')+esc(a.buyer)+' &middot; '):''}${fmtDate(a.date)}${a.reserved?' &middot; still reserved':''}${a.sub?' &middot; tap for sale info':''}</div></div>
             <div style="color:var(--green); font-weight:600; white-space:nowrap;">+${fmtMoney(a.amount)}</div>
           </div></div>`;
       }
@@ -9111,6 +9243,13 @@ function renderMoney(main){
       : { date:a.date, type:'Expense', category:a.category, description:a.note||'', amount:(-a.amount).toFixed(2) });
     downloadCSV('herdnerd-financials-'+period+'.csv', toCSV(rows, ['date','type','category','description','amount']));
   };
+  bindReserved();
+  document.querySelectorAll('[data-opensale]').forEach(el=>el.addEventListener('click',(ev)=>{
+    if(ev.target.closest('button')) return; ev.stopPropagation();
+    const id=el.dataset.opensale;
+    if(id.startsWith('kit:')){ openKitSaleSheet(id.slice(4)); return; }
+    const r=rabbits.find(x=>x.id===id); if(r) openSaleSheet(r);
+  }));
   document.querySelectorAll('[data-addprice]').forEach(btn=>{
     btn.onclick=(ev)=>{ ev.stopPropagation(); const id=btn.dataset.addprice; if(id.startsWith('kit:')){ openKitSaleSheet(id.slice(4)); return; } const r=rabbits.find(x=>x.id===id); if(r) openAddPriceSheet(r); };
   });
@@ -9641,6 +9780,7 @@ function contextualActions(r){
   else if(isArchived(r)){ acts.push(['unarchive','Return to roster']); }
   else if(r.status==='growing'){ acts.push(['graduate','Move to '+(r.sex==='doe'?'Does':'Bucks')]); }
   else if(r.sex==='doe'){ acts.push(['bred','Record breeding'],['plan','Plan a breeding']); if(r.status==='open'||r.status==='resting') acts.push(['kindled','Kindled']); }
+  if(r.movedUp && isUnderSixMonths(r) && r.status!=='growing') acts.push(['unmove','Move back to Juniors']);
   acts.push(['win','Add win']);
   acts.push(['relatives','Relatives']);
   return acts;
@@ -9857,7 +9997,8 @@ function wireProfileTab(r){
       else if(a==='rebred'||a==='bred') openBreedSheet(r);
       else if(a==='plan'){ openAddPlannedSheet(r.id); }
       else if(a==='wean'){ if(litterUiOn){ openWeanPlanSheet(r); } else { r.status='open'; saveData(); renderProfile(); render(); showToast(r.name+' weaned'); } }
-      else if(a==='graduate'){ if(isUnderSixMonths(r)){ showToast(r.name+' stays in Juniors until '+fmtDate(sixMonthDate(r.dob))); return; } r.status=r.sex==='doe'?'open':'available'; saveData(); renderProfile(); render(); showToast(r.name+' moved to '+(r.sex==='doe'?'Does':'Bucks')); }
+      else if(a==='unmove'){ r.status='growing'; r.movedUp=false; saveData(); renderProfile(); render(); showToast(r.name+' moved back to Juniors'); }
+      else if(a==='graduate'){ if(isUnderSixMonths(r)) r.movedUp=true; if(!r.graduatedDate) r.graduatedDate=todayStr(); r.status=r.sex==='doe'?'open':'available'; saveData(); renderProfile(); render(); showToast(r.name+' moved to '+(r.sex==='doe'?'Does':'Bucks')); }
       else if(a==='unarchive') openUnarchive(r);
       else if(a==='edit') openEditSheet(r, renderProfile);
       else if(a==='pedigree'){ profileTab='pedigree'; renderProfile(); }
