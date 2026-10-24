@@ -2294,9 +2294,11 @@ function baseNameOf(r){
   return (p && n.toLowerCase().startsWith(p.toLowerCase()+' ')) ? n.slice(p.length+1).trim() : n;
 }
 function prefixDatalistHTML(){ return `<datalist id="prefix-options">${knownPrefixes().map(p=>`<option value="${esc(p)}">`).join('')}</datalist>`; }
-function ensureAncestor(name, sexHint){
+// breedHint: a new pedigree-only ancestor starts with the child's breed (editable later). An existing pedigree-only record is only filled if its breed is blank; a herd rabbit is never touched.
+function ensureAncestor(name, sexHint, breedHint){
   let r = findByName(name);
-  if(!r){ r = blankRabbit({name, sex:sexHint||'doe', status:'external', external:true}); rabbits.push(r); saveData(); }
+  if(!r){ r = blankRabbit({name, sex:sexHint||'doe', status:'external', external:true, breed:breedHint||''}); rabbits.push(r); saveData(); }
+  else if(r.external && !r.breed && breedHint){ r.breed=breedHint; saveData(); }
   return r;
 }
 function ensureRabbitFieldDefaults(){
@@ -2698,7 +2700,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-23-pjorder';
+const APP_VERSION = '2026-10-24-breedfill';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3602,6 +3604,87 @@ function shrinkImageFile(file){
     img.src = url;
   });
 }
+// Crop step shown when a photo is picked, before it is saved. Free, square or 4:5; "Use whole photo" skips cropping.
+// Cancelling rejects with {cancelled:true} so callers add nothing. The saved photo is still run through encodeToBudget.
+function cropAndShrinkFile(file){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(file), img=new Image();
+    const fail=e=>{ URL.revokeObjectURL(url); reject(e); };
+    img.onerror=()=>fail(new Error('unreadable image'));
+    img.onload=()=>{
+      if(!img.naturalWidth||!img.naturalHeight) return fail(new Error('empty image'));
+      const ov=document.createElement('div'); ov.id='cropOv';
+      ov.style.cssText='position:fixed;inset:0;z-index:10000;background:#111;display:flex;flex-direction:column;font-family:inherit;';
+      ov.innerHTML=`<div style="color:#fff;padding:12px 16px 4px;font-weight:700;">Crop photo <span style="font-weight:400;opacity:.75;font-size:13px;">drag the box or its corners</span></div>
+        <div id="cropStage" style="flex:1;position:relative;overflow:hidden;touch-action:none;user-select:none;">
+          <img id="cropImg" alt="" style="position:absolute;display:block;pointer-events:none;-webkit-user-drag:none;">
+          <div id="cropBox" style="position:absolute;border:2px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.6);cursor:move;touch-action:none;">
+            ${['nw','ne','sw','se'].map(c=>`<div data-c="${c}" style="position:absolute;width:44px;height:44px;${c[0]==='n'?'top:-22px':'bottom:-22px'};${c[1]==='w'?'left:-22px':'right:-22px'};touch-action:none;display:flex;align-items:center;justify-content:center;"><div style="width:16px;height:16px;background:#fff;border-radius:50%;box-shadow:0 0 0 2px rgba(0,0,0,.4);"></div></div>`).join('')}
+          </div></div>
+        <div id="cropRatios" style="display:flex;gap:8px;justify-content:center;padding:10px 12px 0;">
+          ${[['free','Free'],['1','Square'],['0.8','4:5']].map(([v,l],i)=>`<button type="button" class="btn btn-secondary" data-r="${v}" style="background:#2b2b2b;color:#fff;border-color:#777;min-height:44px;${i===0?'outline:2px solid #fff;':''}">${l}</button>`).join('')}</div>
+        <div style="display:flex;gap:8px;padding:10px 12px calc(12px + env(safe-area-inset-bottom));">
+          <button type="button" class="btn btn-secondary" id="cropCancel" style="flex:1;min-height:48px;background:#2b2b2b;color:#fff;border-color:#777;">Cancel</button>
+          <button type="button" class="btn btn-secondary" id="cropWhole" style="flex:1;min-height:48px;background:#2b2b2b;color:#fff;border-color:#777;">Whole photo</button>
+          <button type="button" class="btn btn-primary" id="cropGo" style="flex:1;min-height:48px;">Crop</button></div>`;
+      document.body.appendChild(ov);
+      const stage=ov.querySelector('#cropStage'), im=ov.querySelector('#cropImg'), box=ov.querySelector('#cropBox');
+      im.src=url;
+      let I={x:0,y:0,w:0,h:0}, B={x:0,y:0,w:0,h:0}, ratio=null;
+      const MIN=48;
+      const paint=()=>{ box.style.left=(I.x+B.x)+'px'; box.style.top=(I.y+B.y)+'px'; box.style.width=B.w+'px'; box.style.height=B.h+'px'; };
+      const layout=()=>{
+        const sw=stage.clientWidth, sh=stage.clientHeight, k=Math.min((sw-16)/img.naturalWidth,(sh-16)/img.naturalHeight);
+        I.w=img.naturalWidth*k; I.h=img.naturalHeight*k; I.x=(sw-I.w)/2; I.y=(sh-I.h)/2;
+        im.style.left=I.x+'px'; im.style.top=I.y+'px'; im.style.width=I.w+'px'; im.style.height=I.h+'px';
+      };
+      const fit=()=>{   // biggest centred box with the chosen shape, inset slightly so it reads as a crop
+        let w=I.w*0.9, h=I.h*0.9; if(ratio){ if(w/h>ratio) w=h*ratio; else h=w/ratio; }
+        B={x:(I.w-w)/2, y:(I.h-h)/2, w, h}; paint();
+      };
+      layout(); fit();
+      const onResize=()=>{ const f=I.w; layout(); const m=I.w/(f||1); B={x:B.x*m,y:B.y*m,w:B.w*m,h:B.h*m}; paint(); };
+      window.addEventListener('resize',onResize);
+      const close=()=>{ window.removeEventListener('resize',onResize); ov.remove(); URL.revokeObjectURL(url); };
+      const rel=e=>{ const r=stage.getBoundingClientRect(); return {x:Math.max(0,Math.min(I.w,e.clientX-r.left-I.x)), y:Math.max(0,Math.min(I.h,e.clientY-r.top-I.y))}; };
+      ov.querySelectorAll('#cropRatios button').forEach(b=>b.onclick=()=>{
+        ratio=b.dataset.r==='free'?null:parseFloat(b.dataset.r);
+        ov.querySelectorAll('#cropRatios button').forEach(x=>x.style.outline=x===b?'2px solid #fff':'none'); fit();
+      });
+      box.onpointerdown=e=>{
+        if(e.target.closest('[data-c]')) return;
+        e.preventDefault(); box.setPointerCapture(e.pointerId);
+        const sx=e.clientX, sy=e.clientY, o={x:B.x,y:B.y};
+        box.onpointermove=ev=>{ B.x=Math.max(0,Math.min(I.w-B.w,o.x+ev.clientX-sx)); B.y=Math.max(0,Math.min(I.h-B.h,o.y+ev.clientY-sy)); paint(); };
+        box.onpointerup=box.onpointercancel=()=>{ box.onpointermove=null; box.onpointerup=null; box.onpointercancel=null; };
+      };
+      box.querySelectorAll('[data-c]').forEach(h=>h.onpointerdown=e=>{
+        e.stopPropagation(); e.preventDefault(); h.setPointerCapture(e.pointerId);
+        const c=h.dataset.c, ax=c[1]==='w'?B.x+B.w:B.x, ay=c[0]==='n'?B.y+B.h:B.y;   // the opposite corner stays put
+        const dx=c[1]==='w'?-1:1, dy=c[0]==='n'?-1:1;
+        h.onpointermove=ev=>{
+          const p=rel(ev); let w=Math.max(MIN,(p.x-ax)*dx), hh=Math.max(MIN,(p.y-ay)*dy);
+          const maxW=dx>0?I.w-ax:ax, maxH=dy>0?I.h-ay:ay;
+          if(ratio){ hh=w/ratio; if(hh>maxH){ hh=maxH; w=hh*ratio; } if(w>maxW){ w=maxW; hh=w/ratio; } }
+          w=Math.min(w,maxW); hh=Math.min(hh,maxH);
+          B={x:dx>0?ax:ax-w, y:dy>0?ay:ay-hh, w, h:hh}; paint();
+        };
+        h.onpointerup=h.onpointercancel=()=>{ h.onpointermove=null; h.onpointerup=null; h.onpointercancel=null; };
+      });
+      const finish=(sx,sy,sw,sh)=>{
+        try{ const out=encodeToBudget(img,sx,sy,sw,sh); close(); resolve(out); }catch(e){ close(); reject(e); }
+      };
+      ov.querySelector('#cropCancel').onclick=()=>{ close(); reject({cancelled:true}); };
+      ov.querySelector('#cropWhole').onclick=()=>finish(0,0,img.naturalWidth,img.naturalHeight);
+      ov.querySelector('#cropGo').onclick=()=>{
+        const k=img.naturalWidth/I.w;
+        const sx=Math.max(0,B.x*k), sy=Math.max(0,B.y*k), sw=Math.min(img.naturalWidth-sx,B.w*k), sh=Math.min(img.naturalHeight-sy,B.h*k);
+        finish(sx,sy,sw,sh);
+      };
+    };
+    img.src=url;
+  });
+}
 // Adds a photo and only reports success if it actually saved. If the save
 // fails the photo is taken back out, so it never looks added when it isn't.
 async function addPhotoToRabbit(r, file, category, opts){
@@ -3612,13 +3695,13 @@ async function addPhotoToRabbit(r, file, category, opts){
     showToast('Each rabbit can have one photo for now. Use Replace photo.');
     return false;
   }
-  showToast('Adding photo\u2026');
   let dataUrl;
   try{
     dataUrl = (category===PHOTO_KEEP_ORIGINAL)
       ? await new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>res(fr.result); fr.onerror=()=>rej(fr.error); fr.readAsDataURL(file); })
-      : await shrinkImageFile(file);
-  }catch(e){ console.error(e); showToast("Couldn't read that photo. Try a JPG or PNG."); return false; }
+      : await cropAndShrinkFile(file);
+  }catch(e){ if(e&&e.cancelled){ showToast('Photo not added'); return false; } console.error(e); showToast("Couldn't read that photo. Try a JPG or PNG."); return false; }
+  showToast('Adding photo\u2026');
   const prior = r.photos||[];
   const photo = {id:uid(), category, dataUrl, addedAt:todayStr()};
   if(replaceId) archivePhoto(r, prior.find(p=>p.id===replaceId));
@@ -5138,8 +5221,8 @@ function pairingResults(dam){
   return {litters:lit.length, born, alive, avg:Math.round(born/lit.length*10)/10};
 }
 async function addKitPhoto(dam, kit, file){
+  let dataUrl; try{ dataUrl=await cropAndShrinkFile(file); }catch(e){ if(e&&e.cancelled){ showToast('Photo not added'); return false; } showToast("Couldn't read that photo. Try a JPG or PNG."); return false; }
   showToast('Adding photo…');
-  let dataUrl; try{ dataUrl=await shrinkImageFile(file); }catch(e){ showToast("Couldn't read that photo. Try a JPG or PNG."); return false; }
   const prior=dam.photos||[];
   const photo={id:uid(), category:'Kit', kitId:kit.id, dataUrl, addedAt:todayStr()};
   // one photo shows per kit; an older one is hidden but kept, never deleted
@@ -5171,7 +5254,7 @@ function nurseryCardHTML(r){
 }
 function ancestorCardHTML(r){
   const b=[]; if(r.breed)b.push(r.breed); if(r.color)b.push(r.color); if(r.earNumber)b.push('Ear# '+r.earNumber); if(r.weight)b.push(fmtWeight(r.weight)); if(r.legsWins)b.push(r.legsWins);
-  return `<div class="card"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${esc(b.join(' · '))||'No details yet'}</div></div></div>
+  return `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${esc(b.join(' · '))||'No details yet'}</div></div></div>
     ${(r.sireName||r.damName)?`<div class="card-detail">Sire: ${esc(r.sireName||'?')} &middot; Dam: ${esc(r.damName||'?')}</div>`:''}
     <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">Edit details</button></div></div>`;
 }
@@ -6020,9 +6103,9 @@ function renderSearch(main){
   const relOnly=(!scored.length && anchor) ? relOrder.filter(id=>relPool.has(id)).slice(0,60).map(id=>rabbits.find(x=>x.id===id)).filter(Boolean) : [];
   if(!scored.length && relOnly.length){
     const ext=r=>r.status==='external';
-    body=`<div class="section-label" style="grid-column:1/-1;">${esc(anchorNames).toUpperCase()} IS NOT IN THIS LIST &mdash; RELATED RABBITS THAT ARE &middot; ${relOnly.length}</div>`+relOnly.map(r=>`<div class="card" ${ext(r)?'':`data-openprofile="${r.id}"`}><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${ext(r)?'<span class="badge b-gone">ANCESTOR</span>':statusBadge(r)}</div>
+    body=`<div class="section-label" style="grid-column:1/-1;">${esc(anchorNames).toUpperCase()} IS NOT IN THIS LIST &mdash; RELATED RABBITS THAT ARE &middot; ${relOnly.length}</div>`+relOnly.map(r=>`<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${ext(r)?'<span class="badge b-gone">ANCESTOR</span>':statusBadge(r)}</div>
         <div class="rel-path"><span class="rel-arrow">&#8627;</span> ${relMap.get(r.id)}</div>
-        <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext(r)?'Open / edit':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`).join('');
+        <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext(r)?'Edit details':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`).join('');
   } else if(!scored.length){
     const other=['herd','anc','all'].filter(m=>m!==searchMode&&counts[m]>0);
     body=`<div class="empty" style="grid-column:1/-1;">No rabbit matches "${esc(searchQuery)}" ${where}.${other.length?' Try another list above — it has matches.':''}</div>`;
@@ -6030,9 +6113,9 @@ function renderSearch(main){
     const cardHTML=(r)=>{
       const ext=r.status==='external';
       const badge=ext?'<span class="badge b-gone">ANCESTOR</span>':statusBadge(r);
-      return `<div class="card" ${ext?'':`data-openprofile="${r.id}"`}><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${badge}</div>
+      return `<div class="card" data-openprofile="${r.id}"><div class="card-top"><div><div class="card-name">${esc(r.name)}</div><div class="card-sub">${subLine(r)}</div></div>${badge}</div>
         ${relMap.get(r.id)?`<div class="rel-path"><span class="rel-arrow">&#8627;</span> ${relMap.get(r.id)}</div>`:(anchors.some(a=>a.id===r.id)?'<div class="rel-path"><span class="rel-arrow">&#8627;</span> This is a rabbit you searched for</div>':'')}
-        <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext?'Open / edit':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`;
+        <div class="card-actions"><button class="btn btn-secondary btn-sm" data-act="edit" data-id="${r.id}">${ext?'Edit details':'Edit'}</button><button class="btn btn-secondary btn-sm" data-act="pedigree" data-id="${r.id}">Pedigree</button><button class="btn btn-secondary btn-sm" data-act="relatives" data-id="${r.id}">Relatives</button></div></div>`;
     };
     body=`<div class="section-label" style="grid-column:1/-1;">${scored.length} MATCH${scored.length===1?'':'ES'} ${where.toUpperCase()}</div>`+scored.map(({r})=>cardHTML(r)).join('');
     const shown=new Set(scored.map(x=>x.r.id));
@@ -6846,6 +6929,10 @@ function performMerge(k, d, from){
 function openEditSheet(r, origin, opts){
   const lean = !!(opts && opts.lean);   // opened from a pedigree: fields and Save only; sell / retire / delete live in the full profile
   const known = rabbits.filter(x=>x.id!==r.id).map(x=>x.name);
+  const ePjPick = projects.length ? `<div class="pj-pick" id="f-projs">${projects.map(p=>`<button type="button" class="pj-opt ${(r.projects||[]).includes(p.id)?'on':''}" data-fp="${p.id}">${esc(p.name)}</button>`).join('')}</div>` : '<div class="card-sub">No projects yet. Make them from any rabbit’s + Project button.</div>';
+  const eCar = (r.carries&&typeof r.carries==='object')?r.carries:{};
+  const eCarryPick = traits.length ? traits.map(t=>`<div style="margin-bottom:8px;"><div style="font-weight:700;font-size:14px;margin-bottom:4px;">${esc(t.name)}</div><div class="cy-seg" data-ft="${t.id}">${[['yes','Carries'],['no',"Doesn't"],['unknown','Unknown']].map(([k,l])=>`<button type="button" class="${(eCar[t.id]||'unknown')===k?'on':''}" data-fv="${k}">${l}</button>`).join('')}</div></div>`).join('') : '<div class="card-sub">No traits yet. Add them from any rabbit’s + Project button.</div>';
+  const eOrig = (r.origin&&r.origin.type)||'';
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>Edit ${esc(r.name)}</h2>
     <div class="row2">
@@ -6860,21 +6947,36 @@ function openEditSheet(r, origin, opts){
     </div>
     <div class="row2">
       <div class="field"><label>Ear #</label><input id="f-ear" value="${esc(r.earNumber||'')}"></div>
-      <div class="field"><label>Weight (lbs)</label><input id="f-weight" value="${esc(r.weight||'')}"></div>
-    </div>
-    <div class="row2">
       <div class="field"><label>Date of birth</label><input type="date" id="f-dob" value="${esc(r.dob||'')}"></div>
-      <div class="field"><label>Registration #</label><input id="f-reg" value="${esc(r.registrationNumber||'')}"></div>
     </div>
-    <div class="row2">
-      <div class="field"><label>GC #</label><input id="f-gc" value="${esc(r.gcNumber||'')}"></div>
-      <div class="field"><label>Legs</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
-    </div>
+    <div id="f-earwarn" class="card-sub" style="margin:-6px 0 8px;" hidden></div>
     <div class="row2">
       <div class="field"><label>Sire</label><input id="f-sire" value="${esc(r.sireName||'')}"></div>
       <div class="field"><label>Dam</label><input id="f-dam" value="${esc(r.damName||'')}"></div>
     </div>
-    <div class="field"><label>General notes</label><textarea id="f-notes">${esc(r.notes||'')}</textarea></div>
+    <details class="lp-fold" id="f-more"><summary>More details <span>optional</span></summary>
+      <div class="lit-label" style="margin:4px 0 6px;">Projects</div>${ePjPick}
+      <div class="lit-label" style="margin:10px 0 6px;">Carries</div>${eCarryPick}
+      <div class="row2" style="margin-top:8px;">
+        <div class="field"><label>Registration #</label><input id="f-reg" value="${esc(r.registrationNumber||'')}"></div>
+        <div class="field"><label>GC #</label><input id="f-gc" value="${esc(r.gcNumber||'')}"></div>
+      </div>
+      <div class="field"><label>Legs</label><input id="f-legs" value="${esc(r.legsWins||'')}"></div>
+      <div class="lit-label" style="margin:4px 0 6px;">Weight</div>
+      <div class="row2">
+        <div class="field"><input id="f-weight" value="${esc(r.weight||'')}" placeholder="3.4, 3 lb 4 oz, or 14 oz" autocomplete="off"></div>
+        <div class="field"><input type="date" id="f-wdate" value="${esc(todayStr())}"></div>
+      </div>
+      <div class="card-sub" id="f-wprev" style="min-height:18px;margin:-4px 0 10px;"></div>
+      <div class="lit-label" style="margin:4px 0 6px;">Where did this rabbit come from?</div>
+      <div class="seg" id="f-origin" style="margin-bottom:8px;"><button type="button" data-o="bred" class="${eOrig==='bred'?'on':''}">Bred here</button><button type="button" data-o="bought" class="${eOrig==='bought'?'on':''}">Came from elsewhere</button></div>
+      <div id="f-originmore" ${eOrig==='bought'?'':'hidden'}>
+        <div class="field"><label>Breeder / seller</label><input id="f-from" value="${esc((r.origin&&r.origin.from)||'')}"></div>
+        <div class="field"><label>Date acquired</label><input type="date" id="f-acq" value="${esc((r.origin&&r.origin.acquired)||'')}"></div>
+      </div>
+      <div class="field"><label>Add a photo</label><input type="file" id="f-photo" accept="image/*"></div>
+      <div class="field"><label>General notes</label><textarea id="f-notes">${esc(r.notes||'')}</textarea></div>
+    </details>
     <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-save">Save</button></div>
     ${(!lean && r.status!=='external')?`<div class="sheet-actions">
       <button class="btn btn-secondary" id="f-forsale" style="flex:1;">${r.forSale?'For sale &#10003;':'Mark for sale'}</button>
@@ -6882,6 +6984,7 @@ function openEditSheet(r, origin, opts){
     <div class="sheet-actions">
       <button class="btn btn-secondary" id="f-deceased" style="flex:1;">Mark deceased</button>
       <button class="btn btn-secondary" id="f-retired" style="flex:1;">Mark retired</button></div>`:''}
+    ${(!lean && r.status==='external')?`<div class="sheet-actions"><button class="btn btn-secondary" id="f-toherd" style="flex:1;">Add ${esc(r.name)} to my herd</button></div>`:''}
     ${lean?'':`<div class="sheet-actions"><button class="btn btn-danger" id="f-delete" style="flex:1;">Delete permanently</button></div>`}`);
   attachSuggest(document.getElementById('f-color'), allKnownColors);
   attachSuggest(document.getElementById('f-sire'), ()=>rabbits.filter(x=>x.sex==='buck'&&x.id!==r.id).map(x=>x.name));
@@ -6889,8 +6992,47 @@ function openEditSheet(r, origin, opts){
   document.getElementById('f-cancel-x').onclick=()=>done(origin);
   document.getElementById('f-cancel').onclick=()=>done(origin);
   let sex=r.sex;
+  let eOriginSel=eOrig, eOriginTouched=false;
+  document.getElementById('f-weight').addEventListener('input',e=>{ document.getElementById('f-wprev').textContent=weightPreviewText(e.target.value); });
+  document.querySelectorAll('#f-origin button').forEach(b=>b.onclick=()=>{
+    eOriginTouched=true; eOriginSel = eOriginSel===b.dataset.o ? '' : b.dataset.o;
+    document.querySelectorAll('#f-origin button').forEach(x=>x.classList.toggle('on',x.dataset.o===eOriginSel));
+    document.getElementById('f-originmore').hidden = eOriginSel!=='bought';
+  });
+  document.querySelectorAll('#f-projs [data-fp]').forEach(b=>b.onclick=()=>b.classList.toggle('on'));
+  document.querySelectorAll('[data-ft]').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=()=>{ g.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b)); }));
+  { const earIn=document.getElementById('f-ear'), earWarn=document.getElementById('f-earwarn');
+    earIn.addEventListener('input',()=>{ const v=earIn.value.trim().toLowerCase(); const hit=v&&rabbits.find(x=>x.id!==r.id && !x.external && x.earNumber && String(x.earNumber).trim().toLowerCase()===v);
+      earWarn.hidden=!hit; if(hit) earWarn.textContent='Ear # '+earIn.value.trim()+' is already on '+hit.name+'.'; }); }
   document.querySelectorAll('#f-sex button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-sex button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); sex=b.dataset.v; });
+  let renameOk=false;
   document.getElementById('f-save').onclick=()=>{
+    { // Renaming a rabbit renames it everywhere, so ask first (and offer "a different rabbit" when opened from a pedigree spot)
+      const nn=document.getElementById('f-name').value.trim();
+      if(!renameOk && nn && nameKey(nn)!==nameKey(r.name)){
+        const used=rabbits.filter(x=>x.id!==r.id && ((x.sireName&&nameKey(x.sireName)===nameKey(r.name))||(x.damName&&nameKey(x.damName)===nameKey(r.name)))).length;
+        const slot=opts&&opts.slot;
+        if(used>0 || slot){
+          let box=document.getElementById('f-renamebox'); if(box) box.remove();
+          box=document.createElement('div'); box.id='f-renamebox'; box.className='dupe-box'; box.style.cssText='margin:10px 0;';
+          box.innerHTML=`<div style="font-weight:700;margin-bottom:6px;">Change the name from ${esc(r.name)} to ${esc(nn)}?</div>
+            <div class="card-sub" style="margin-bottom:8px;">${used>0?esc(r.name)+' is the parent of '+used+' other rabbit'+(used===1?'':'s')+'. Renaming changes the name on all of them. ':''}Only do this if it is the same rabbit with a corrected name.</div>
+            <div class="sheet-actions" style="flex-wrap:wrap;">
+              ${slot?`<button type="button" class="btn btn-primary" id="f-rn-new" style="flex:1 1 100%;">It's a different rabbit &mdash; put "${esc(nn)}" in this spot</button>`:''}
+              <button type="button" class="btn btn-secondary" id="f-rn-all" style="flex:1 1 100%;">Same rabbit &mdash; rename everywhere</button>
+              <button type="button" class="btn btn-secondary" id="f-rn-back" style="flex:1 1 100%;">Keep editing</button></div>`;
+          const bar=document.getElementById('f-save').closest('.sheet-actions'); bar.parentNode.insertBefore(box, bar);
+          box.scrollIntoView({block:'nearest'});
+          document.getElementById('f-rn-back').onclick=()=>box.remove();
+          document.getElementById('f-rn-all').onclick=()=>{ renameOk=true; box.remove(); document.getElementById('f-save').click(); };
+          const nb=document.getElementById('f-rn-new'); if(nb) nb.onclick=()=>{ closeSheet(); openQuickNameSheet(slot.parent, slot.rel, origin, nn); };
+          return;
+        }
+      }
+    }
+    const wTxt=document.getElementById('f-weight').value.trim(), wChanged = wTxt!==String(r.weight||'').trim();
+    const wp = wChanged ? parseWeightText(wTxt) : {};
+    if(wChanged && wTxt && wp.error){ showToast(wp.error); document.getElementById('f-more').open=true; return; }
     const sire=document.getElementById('f-sire').value.trim(), dam=document.getElementById('f-dam').value.trim();
     const check=(val, cb)=>{
       if(!val || rabbits.some(x=>nameKey(x.name)===nameKey(val))) return cb(val);
@@ -6906,15 +7048,28 @@ function openEditSheet(r, origin, opts){
       r.sex=sex; r.breed=document.getElementById('f-breed').value; r.color=document.getElementById('f-color').value;
       r.earNumber=document.getElementById('f-ear').value; r.weight=document.getElementById('f-weight').value;
       r.dob=csvParseDate(document.getElementById('f-dob').value)||null; r.legsWins=document.getElementById('f-legs').value;
+      if(wChanged){
+        if(!wTxt) r.weight='';
+        else if(wp.oz){ r.weight=String(Math.round(wp.oz/16*100)/100); r.weightLog=r.weightLog||[]; r.weightLog.push({id:uid(), date:document.getElementById('f-wdate').value||todayStr(), oz:wp.oz, source:'manual'}); }
+      }
+      if(projects.length){ const on=[...document.querySelectorAll('#f-projs [data-fp].on')].map(b=>b.dataset.fp); const cur=r.projects||[]; r.projects=cur.filter(id=>on.includes(id)||!projects.some(p=>p.id===id)).concat(on.filter(id=>!cur.includes(id))); }
+      if(traits.length){ r.carries=(r.carries&&typeof r.carries==='object')?r.carries:{}; document.querySelectorAll('[data-ft]').forEach(g=>{ const on=g.querySelector('button.on'); if(!on) return; if(on.dataset.fv==='unknown') delete r.carries[g.dataset.ft]; else r.carries[g.dataset.ft]=on.dataset.fv; }); }
+      if(eOriginTouched || (eOriginSel==='bought')){
+        const fromV=document.getElementById('f-from').value.trim(), acqV=document.getElementById('f-acq').value||'';
+        if(eOriginSel) r.origin={type:eOriginSel, from:eOriginSel==='bought'?fromV:'', acquired:eOriginSel==='bought'?acqV:''};
+        else if(eOriginTouched) r.origin=null;
+      }
+      { const ph=(document.getElementById('f-photo').files||[])[0]; if(ph) addPhotoToRabbit(r, ph, 'Primary').then(()=>{ if(profileRabbitId===r.id) renderProfile(); }); }
       r.registrationNumber=document.getElementById('f-reg').value;
       r.gcNumber=document.getElementById('f-gc').value;
       r.sireName=finalSire; r.damName=finalDam; r.notes=document.getElementById('f-notes').value;
-      if(finalSire) ensureAncestor(finalSire,'buck');
-      if(finalDam) ensureAncestor(finalDam,'doe');
+      if(finalSire) ensureAncestor(finalSire,'buck',r.breed);
+      if(finalDam) ensureAncestor(finalDam,'doe',r.breed);
       if(r.status==='growing'&&r.dob) r.flag='';
       saveData().then(ok=>{ if(ok) done(origin); });
     }));
   };
+  const toHerdBtn=document.getElementById('f-toherd'); if(toHerdBtn) toHerdBtn.onclick=()=>promoteAncestor(r);
   const dec=document.getElementById('f-deceased');
   const sellBtn=document.getElementById('f-sell');
   if(sellBtn) sellBtn.onclick=()=>{ closeSheet(); openSaleSheet(r); };
@@ -7072,8 +7227,8 @@ function commitAdd(name, sex, d){
   if(d.origin) newRabbit.origin=d.origin;
   if(d.notes) newRabbit.notesLog=[{id:uid(), date:todayStr(), text:d.notes}];
   rabbits.push(newRabbit);
-  if(sire) ensureAncestor(sire,'buck');
-  if(dam) ensureAncestor(dam,'doe');
+  if(sire) ensureAncestor(sire,'buck',d.breed);
+  if(dam) ensureAncestor(dam,'doe',d.breed);
   saveData(); closeSheet(); render();
   openRabbitProfile(newRabbit);
   showToast(name+' added');
@@ -7183,6 +7338,19 @@ function openHistoryEditSheet(dam, entry, back){
     saveData(); back();
   }); };
 }
+// Turns a pedigree-only ancestor into a rabbit in the herd. Same record: its name, pedigree links and every child's link are untouched.
+function promoteAncestor(anc, then){
+  if(!anc || !anc.external) return;
+  const prev={external:anc.external, status:anc.status, prevStatus:anc.prevStatus};
+  anc.external=false;
+  anc.status = isUnderSixMonths(anc) ? 'growing' : (anc.sex==='buck' ? 'available' : 'open');
+  saveData().then(ok=>{
+    if(!ok){ anc.external=prev.external; anc.status=prev.status; anc.prevStatus=prev.prevStatus; showToast("Couldn't save, so "+anc.name+" is still a pedigree ancestor."); return; }
+    closeSheet(); render(); if(profileRabbitId) renderProfile();
+    showUndoToast(anc.name+' is in your herd', ()=>{ anc.external=prev.external; anc.status=prev.status; anc.prevStatus=prev.prevStatus; }, 6000);
+    if(then) then();
+  });
+}
 function openAncestorSheet(anc, origin){
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>${esc(anc.name)}</h2>
@@ -7200,7 +7368,9 @@ function openAncestorSheet(anc, origin){
     <div class="field"><label>Legs</label><input id="f-alegs" value="${esc(anc.legsWins||'')}"></div>
     <div class="field"><label>Registration #</label><input id="f-areg" value="${esc(anc.registrationNumber||'')}"></div>
     <div class="sheet-actions"><button class="btn btn-secondary" id="f-cancel">Cancel</button><button class="btn btn-primary" id="f-asave">Save</button></div>
+    <div class="sheet-actions"><button class="btn btn-secondary" id="f-ato-herd" style="flex:1;">Add ${esc(anc.name)} to my herd</button></div>
     <div class="sheet-actions"><button class="btn btn-danger" id="f-adelete" style="flex:1;">Delete</button></div>`);
+  document.getElementById('f-ato-herd').onclick=()=>promoteAncestor(anc);
   attachSuggest(document.getElementById('f-acolor'), allKnownColors);
   document.getElementById('f-cancel-x').onclick=()=>done(origin);
   document.getElementById('f-cancel').onclick=()=>done(origin);
@@ -7294,6 +7464,12 @@ function pedExtraButtons(anc, back, slot){
     document.getElementById('pedOpenProf').onclick=()=>{ closeSheet(); openRabbitProfile(anc); };
     document.getElementById('pedShowPed').onclick=()=>{ closeSheet(); openRabbitProfile(anc,'pedigree'); };
   }
+  if(anc.external){
+    const r3=document.createElement('div'); r3.className='sheet-actions'; r3.style.cssText='margin-top:8px;';
+    r3.innerHTML='<button type="button" class="btn btn-secondary" style="flex:1;" id="pedToHerd">Add '+esc(anc.name)+' to my herd</button>';
+    after.parentNode.insertBefore(r3, after.nextSibling); after=r3;
+    document.getElementById('pedToHerd').onclick=()=>promoteAncestor(anc);
+  }
   if(slot && slot.parent){
     const r2=document.createElement('div'); r2.className='sheet-actions'; r2.style.cssText='margin-top:8px;';
     r2.innerHTML='<button type="button" class="btn btn-secondary" style="flex:1;" id="pedSwap">Wrong rabbit here? Put a different one in this spot</button>';
@@ -7356,7 +7532,7 @@ function wirePedigreeTaps(container, r, back){
     const anc=findByName(b.dataset.pedname); if(!anc) return;
     const pth=b.dataset.pedat||'', ppth=pth.slice(0,-1);
     const slotParent = pth ? (ppth===''?r:ancestorByPath(r.name,ppth)) : null;
-    openEditSheet(anc,back,{lean:true}); pedExtraButtons(anc,back,slotParent&&slotParent.name?{parent:ensureAncestor(slotParent.name),rel:pth.slice(-1)}:null); pedNavButtons(b.dataset.pedat);
+    const slotInfo=slotParent&&slotParent.name?{parent:ensureAncestor(slotParent.name),rel:pth.slice(-1)}:null; openEditSheet(anc,back,{lean:true,slot:slotInfo}); pedExtraButtons(anc,back,slotInfo); pedNavButtons(b.dataset.pedat);
     pedDockOn(b);
   });
   container.querySelectorAll('[data-pedpath]').forEach(b=>b.onclick=()=>{
@@ -7384,7 +7560,7 @@ function openPrintOptionsSheet(r, back){
   document.querySelectorAll('#f-detail button').forEach(b=>b.onclick=()=>{ document.querySelectorAll('#f-detail button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); detail=b.dataset.v; });
   document.getElementById('f-go').onclick=()=>{ returnHome(); printPedigreeAdvanced(r, orientation, detail); };
 }
-function openQuickNameSheet(parent, rel, back){
+function openQuickNameSheet(parent, rel, back, prefill){
   const label = rel==='s'?'Sire':'Dam';
   openSheet(`<button class="close-x" id="f-cancel-x">&times;</button>
     <h2>${esc(parent.name)}'s ${label.toLowerCase()}</h2>
@@ -7419,6 +7595,8 @@ function openQuickNameSheet(parent, rel, back){
   document.getElementById('f-cancel-x').onclick=()=>done(back);
   document.getElementById('f-cancel').onclick=()=>done(back);
   const nameInput = document.getElementById('f-qn');
+  if(prefill){ nameInput.value=prefill; }
+  if(parent.breed){ document.getElementById('f-qbreed').value=parent.breed; }   // same breed as the rabbit this spot belongs to; change it if this one differs
   attachSuggest(nameInput, ()=>rabbits.filter(x=>x.sex===(rel==='s'?'buck':'doe')).map(x=>x.name));
   attachSuggest(document.getElementById('f-qcolor'), allKnownColors);
   const note = document.getElementById('f-qnote');
@@ -7431,6 +7609,7 @@ function openQuickNameSheet(parent, rel, back){
       note.style.display='none';
     }
   });
+  if(prefill) nameInput.dispatchEvent(new Event('input'));
   document.getElementById('f-save').onclick=()=>{
     const qbase=document.getElementById('f-qn').value.trim();
     if(!qbase){ showToast('Enter a name'); return; }
@@ -7459,6 +7638,7 @@ function openQuickNameSheet(parent, rel, back){
         // fill in any blanks on the existing pedigree-only record with what was just typed
         Object.keys(fields).forEach(k=>{ if(!anc[k] && fields[k]) anc[k]=fields[k]; });
       }
+      { const bk=anc.breed||fields.breed; if(fields.sireName) ensureAncestor(fields.sireName,'buck',bk); if(fields.damName) ensureAncestor(fields.damName,'doe',bk); }
       saveData().then(ok=>{ if(ok) done(back); });
     };
     if(rabbits.some(x=>nameKey(x.name)===nameKey(name))) return commit(name);
@@ -9909,6 +10089,7 @@ function renderBackup(main){
 /* ---------------- RABBIT PROFILE (full screen) ---------------- */
 function contextualActions(r){
   const acts=[];
+  if(r.status==='external'){ acts.push(['win','Add win'],['relatives','Relatives']); return acts; }   // pedigree-only rabbits: no breeding buttons
   if(r.status==='pregnant'){ acts.push(['kindled','Kindled'],['lost','Not bred']); }
   else if(r.status==='nursing'){ if(canRebred(r)) acts.push(['rebred','Rebred']); acts.push(['wean','Weaned'],['editlitter','Edit litter']); }
   else if(isArchived(r)){ acts.push(['unarchive','Return to roster']); }
@@ -10626,8 +10807,8 @@ async function commitCsvImport(){
   });
   csvImportRows.forEach(row=>{
     if(row.existing && row.action==='skip') return;
-    if(row.data.sireName) ensureAncestor(row.data.sireName,'buck');
-    if(row.data.damName) ensureAncestor(row.data.damName,'doe');
+    if(row.data.sireName) ensureAncestor(row.data.sireName,'buck',row.data.breed);
+    if(row.data.damName) ensureAncestor(row.data.damName,'doe',row.data.breed);
   });
   const saved = await saveData();
   closeSheet(); render();
