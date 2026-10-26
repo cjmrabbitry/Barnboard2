@@ -2175,6 +2175,11 @@ const PLANNED_KEY = 'planned_v1';
 const EVENTS_KEY = 'events_v1';
 const SHOWS_KEY = 'shows_v1';
 const EXPENSES_KEY = 'expenses_v1';
+const OTHER_INCOME_KEY = 'otherIncome_v1';   // income that isn't a rabbit or kit sale (show winnings, stud fees, supplies sold…)
+const INCOME_CATEGORIES = ['Show winnings','Stud fee','Supplies sold','Manure & compost','Meat & fur','Other'];
+let otherIncome = [];
+const MONEY_CATS_KEY = 'moneyCats_v1';
+let expenseCats = ['Feed','Hay & bedding','Caging & wire','Vet & meds','Show & entry fees','ARBA & registration','Supplies','Shipping & travel','Other'], incomeCats = INCOME_CATEGORIES.slice(), moneyCatsSafe = false;   // saving is blocked unless the stored lists were read (or truly don't exist yet)
 const PEDIGREE_SETTINGS_KEY = 'pedigreeSettings_v1';
 function defaultPedigreeSettings(){
   return {
@@ -2328,6 +2333,8 @@ async function loadData(){
   try{ customEvents = JSON.parse((await window.storage.get(EVENTS_KEY,false)).value); }catch(e){ customEvents=[]; }
   try{ shows = JSON.parse((await window.storage.get(SHOWS_KEY,false)).value); }catch(e){ shows=[]; }
   try{ expenses = JSON.parse((await window.storage.get(EXPENSES_KEY,false)).value); }catch(e){ expenses=[]; }
+  moneyCatsSafe=false; try{ const mc=JSON.parse((await window.storage.get(MONEY_CATS_KEY,false)).value); const ok=a=>Array.isArray(a)&&a.length&&a.every(x=>typeof x==='string'&&x.trim()); if(mc&&typeof mc==='object'){ if(ok(mc.expense)) expenseCats=mc.expense; if(ok(mc.income)) incomeCats=mc.income; moneyCatsSafe=true; } }catch(e){ moneyCatsSafe=/not found/i.test(String(e&&e.message)); }
+  try{ otherIncome = JSON.parse((await window.storage.get(OTHER_INCOME_KEY,false)).value); if(!Array.isArray(otherIncome)) otherIncome=[]; }catch(e){ otherIncome=[]; }
   try{ pedigreeSettings = Object.assign(defaultPedigreeSettings(), JSON.parse((await window.storage.get(PEDIGREE_SETTINGS_KEY,false)).value)); }catch(e){ pedigreeSettings=defaultPedigreeSettings(); }
   if(hadNoSavedData){
     // Every brand-new account — including your own — starts completely
@@ -2660,7 +2667,7 @@ function wireRemovedLitterItems(main){
 function backupAccountId(){ return (currentUser && currentUser.id) ? String(currentUser.id) : 'local'; }
 function fullBackupObject(){
   return { app:'HerdNerd Pro', version:1, savedAt:new Date().toISOString(), accountId: backupAccountId(),
-    rabbits, planned, events:customEvents, shows, expenses, pedigreeSettings, trash, waitlist, kitTags:customKitTags, projects, traits, quickPicks, alertPrefs, reminders:customReminders };
+    rabbits, planned, events:customEvents, shows, expenses, otherIncome, moneyCats:{expense:expenseCats, income:incomeCats}, pedigreeSettings, trash, waitlist, kitTags:customKitTags, projects, traits, quickPicks, alertPrefs, reminders:customReminders };
 }
 function downloadFullBackup(){
   const blob = new Blob([JSON.stringify(fullBackupObject())], {type:'application/json'});
@@ -2690,7 +2697,8 @@ function addBackFromBackup(text){
     if(Array.isArray(o.weightLog)&&o.weightLog.length){ r.weightLog=Array.isArray(r.weightLog)?r.weightLog:[]; const ids=new Set(r.weightLog.map(w=>w.id)); o.weightLog.forEach(w=>{ if(w&&w.id&&!ids.has(w.id)) r.weightLog.push(w); }); }
   });
   const nk = projects.length+traits.length+quickPicks.length+customKitTags.length+customReminders.length-nk0;
-  const np=addMissing(b.planned,planned), ne=addMissing(b.events,customEvents), ns=addMissing(b.shows,shows), nx=addMissing(b.expenses,expenses);
+  const np=addMissing(b.planned,planned), ne=addMissing(b.events,customEvents), ns=addMissing(b.shows,shows), nx=addMissing(b.expenses,expenses)+addMissing(b.otherIncome,otherIncome);
+  if(b.moneyCats && typeof b.moneyCats==='object'){ [['expense',expenseCats],['income',incomeCats]].forEach(([k,list])=>{ (Array.isArray(b.moneyCats[k])?b.moneyCats[k]:[]).forEach(c=>{ if(typeof c==='string' && c.trim() && !list.some(x=>x.toLowerCase()===c.toLowerCase())) list.push(c); }); }); }
   ensureRabbitFieldDefaults();
   return {nr,np,ne,ns,nx,nk};
 }
@@ -2700,7 +2708,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-24-breedfill';
+const APP_VERSION = '2026-10-26-moneycats';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3412,7 +3420,7 @@ function openProjectWarnSheet(pid){
 // ===== ACCOUNT SWITCH CLEAN-UP START =====
 function clearAccountMemory(){
   litterUiOn = false; flowUiOn = false; nurseryTab = 'nursing'; customKitTags = DEFAULT_CUSTOM_KIT_TAGS.slice(); waitlist = []; waitlistSafe = false; kitTagsSafe = false; projects = []; projectsSafe = false; traits = []; traitsSafe = false; quickPicks = []; quickPicksSafe = false; alertPrefs = {off:{},nestDays:3,palpateDays:14}; alertsSafe = false; customReminders = []; remindersSafe = false; trash = []; trashSafe = false; kq = null; try{ nnKitsOpen.clear(); }catch(e){} attnGrpOpen = {overdue:true}; attnGrpAll = {}; traitFilter = null; projectFilter = 'all'; selectMode = false; selectedIds = new Set();
-  rabbits = []; planned = []; customEvents = []; shows = []; expenses = [];
+  rabbits = []; planned = []; customEvents = []; shows = []; expenses = []; otherIncome = []; expenseCats=EXPENSE_CATEGORIES.slice(); incomeCats=INCOME_CATEGORIES.slice(); moneyCatsSafe=false;
   pedigreeSettings = defaultPedigreeSettings();
   trash = [];
   photoSavedMap = new Map();
@@ -3552,6 +3560,16 @@ function hideSaveError(){
 async function savePlanned(){ try{ await window.storage.set(PLANNED_KEY, JSON.stringify(planned), false); return true; }catch(e){ console.error(e); return false; } }
 async function saveEvents(){ try{ await window.storage.set(EVENTS_KEY, JSON.stringify(customEvents), false); return true; }catch(e){ console.error(e); return false; } }
 async function saveShows(){ try{ await window.storage.set(SHOWS_KEY, JSON.stringify(shows), false); return true; }catch(e){ console.error(e); return false; } }
+async function saveMoneyCats(){
+  if(!moneyCatsSafe){ showToast("Your categories didn't load, so they can't be changed right now. Refresh and try again."); return false; }
+  try{ await window.storage.set(MONEY_CATS_KEY, JSON.stringify({expense:expenseCats, income:incomeCats}), false); return true; }
+  catch(e){ console.error(e); showToast("Couldn't save — check your connection and try again."); return false; }
+}
+function catOptions(list, current){ const l=list.slice(); if(current && !l.includes(current)) l.push(current); return l.map(c=>`<option value="${esc(c)}" ${current===c?'selected':''}>${esc(c)}</option>`).join(''); }
+async function saveOtherIncome(){
+  try{ await window.storage.set(OTHER_INCOME_KEY, JSON.stringify(otherIncome), false); return true; }
+  catch(e){ console.error(e); showToast("Couldn't save — check your connection and try again."); return false; }
+}
 async function saveExpenses(){
   try{ await window.storage.set(EXPENSES_KEY, JSON.stringify(expenses), false); return true; }
   catch(e){ console.error(e); showToast("Couldn't save — check your connection and try again."); return false; }
@@ -4259,8 +4277,25 @@ function autoGraduateJuniors(){
   rabbits.forEach(r=>{ if(['open','available'].includes(r.status) && isUnderSixMonths(r) && !r.movedUp){ r.status='growing'; changed=true; } });
   if(changed) saveData();
 }
+// A litter whose kits have all been lost leaves the Nursery: the doe goes back to Open (the same step as weaning an empty litter).
+// The litter itself, its losses and its dates stay on her record. If a kit is put back, she returns to Nursing.
+function autoCloseLostLitters(){
+  const moved=[];
+  rabbits.forEach(r=>{
+    if(r.sex!=='doe' || !r.litterBornDate) return;
+    const kits=r.litterKits, none=Array.isArray(kits) && kits.length===0;
+    const d=r.litterDead, lost=(d?((d.DOA||0)+(d.peanut||0)+(d.passed||0)):0)+((r.litterLosses||[]).length>0?1:0);
+    if(r.status==='nursing' && none && lost>0){ r.status='open'; r.litterAutoClosed=r.litterBornDate; moved.push(r.name); }
+    else if(r.litterAutoClosed){
+      if(r.litterAutoClosed===r.litterBornDate && r.status==='open' && Array.isArray(kits) && kits.length>0){ r.status='nursing'; r.litterAutoClosed=null; }
+      else if(r.status!=='open' || r.litterAutoClosed!==r.litterBornDate){ r.litterAutoClosed=null; }
+    }
+  });
+  if(moved.length){ saveData(); setTimeout(()=>showToast((moved.length===1?moved[0]+"'s litter has":moved.length+' litters have')+' no surviving kits, so '+(moved.length===1?'it was':'they were')+' moved out of Nursery. Still in her records.'),50); }
+}
 function render(){
   autoGraduateJuniors();
+  autoCloseLostLitters();
   document.getElementById('quickBredBtn').style.display = 'none';
   const banner = document.getElementById('adminViewBanner');
   if(viewingAsCustomer){
@@ -9314,7 +9349,7 @@ async function openStartOverSheet(){
   let info=null;
   try{ const {data}=await sb.rpc('reset_archive_info'); info=data||null; }catch(e){ info=null; }
   const n=(a)=>Array.isArray(a)?a.length:0;
-  const counts=[[n(rabbits),'rabbits'],[n(planned),'planned breedings'],[n(projects),'projects'],[n(shows),'shows'],[n(expenses),'expenses'],[n(customReminders),'reminders'],[n(waitlist),'waitlist entries']].filter(x=>x[0]>0);
+  const counts=[[n(rabbits),'rabbits'],[n(planned),'planned breedings'],[n(projects),'projects'],[n(shows),'shows'],[n(expenses),'expenses'],[n(otherIncome),'other income entries'],[n(customReminders),'reminders'],[n(waitlist),'waitlist entries']].filter(x=>x[0]>0);
   const cs=counts.length?counts.map(x=>x[0]+' '+x[1]).join(', '):'nothing yet';
   openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Start over</h2>
     <div class="card-sub" style="margin-bottom:10px;">This clears this account&rsquo;s herd data and sets it up like new: <b>${esc(cs)}</b>.<br><br>
@@ -9352,6 +9387,7 @@ async function openStartOverSheet(){
 function moreAction(k){
   if(k==='add') openAddSheet();
   else if(k==='kittags') openKitTagsSettings();
+  else if(k==='moneycats') openMoneyCatsSheet();
   else if(k==='waitlist') openWaitlistSheet();
   else if(k==='colors') openPaletteSheet();
   else if(k==='myreminders') openMyRemindersSheet();
@@ -9378,7 +9414,7 @@ async function openMoreSheet(){
   const groups={
     import:['Import',[['import','Import from CSV'],['importpdf','Import from Pedigree PDF']]],
     records:['Records',[['ancestors','Ancestors'],['cleanup','Move herd rabbits to Ancestors'],['archive','Archive'],['merge','Merge duplicates'],['trash','Recently deleted']]],
-    settings:['Settings',[['reminders','Reminders'],['colors','Colors'],['pedigreesettings','Pedigree settings'],...(litterUiOn?[['kittags','Kit tags']]:[]),...(!localSandboxMode?[['myinfo','My info']]:[]),['backup','Backup and restore'],...((!localSandboxMode&&!viewingAsCustomer)?[['startover','Start over (clear this account)']]:[])]]
+    settings:['Settings',[['reminders','Reminders'],['colors','Colors'],['pedigreesettings','Pedigree settings'],['moneycats','Money categories'],...(litterUiOn?[['kittags','Kit tags']]:[]),...(!localSandboxMode?[['myinfo','My info']]:[]),['backup','Backup and restore'],...((!localSandboxMode&&!viewingAsCustomer)?[['startover','Start over (clear this account)']]:[])]]
   };
   const items=[['add','Add rabbit'],['planned','Planned breedings'],['forsale','For sale'],['shows','Upcoming shows'],...(litterUiOn?[['waitlist','Waitlist']]:[])];
   const gitems=[['import','Import'],['records','Records'],['settings','Settings']];
@@ -9470,7 +9506,7 @@ function moneyActivityForPeriod(period){
   const soldWithPrice = soldInPeriod.filter(r=>priceEntered(r.sale.price));
   const soldNoPrice = soldInPeriod.filter(r=>!priceEntered(r.sale.price));
   const expensesInPeriod = expenses.filter(e=>inMoneyPeriod(e.date, period));
-  const incomeEntries = moneyIncomeEntries().filter(e=>inMoneyPeriod(e.date, period));
+  const incomeEntries = moneyIncomeEntries().concat(otherIncome.map(i=>({type:'income', manual:true, id:i.id, rabbitId:'', name:i.category||'Other', buyer:'', sub:'', date:i.date, amount:Number(i.amount)||0, note:i.note||'', category:i.category||'Other'}))).filter(e=>inMoneyPeriod(e.date, period));
   return {soldWithPrice, soldNoPrice, expensesInPeriod, incomeEntries};
 }
 function renderMoney(main){
@@ -9498,9 +9534,10 @@ function renderMoney(main){
     <div class="stat" style="cursor:default;"><div class="n" style="color:var(--rust-text);">${fmtMoney(expenseTotal)}</div><div class="l">EXPENSES</div></div>
     <div class="stat" style="cursor:default;"><div class="n" style="color:${net>=0?'var(--green)':'var(--rust-text)'};">${fmtMoney(net)}</div><div class="l">NET</div></div>
   </div>
-  <div style="display:flex; gap:8px; margin-bottom:14px;">
+  <div style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;">
+    <button class="btn btn-primary" id="moneyAddIncomeBtn" style="flex:1;">+ Add income</button>
     <button class="btn btn-primary" id="moneyAddExpenseBtn" style="flex:1;">+ Add expense</button>
-    <button class="btn btn-secondary" id="moneyExportBtn" style="flex:1;">Export CSV</button>
+    <button class="btn btn-secondary" id="moneyExportBtn" style="flex:1 1 100%;">Export CSV</button>
   </div>`;
 
   if(soldNoPrice.length){
@@ -9526,9 +9563,16 @@ function renderMoney(main){
   h += reservedSectionHTML();
   h += `<div class="section-label">ACTIVITY</div>`;
   if(!activity.length){
-    h += `<div class="empty">Nothing here for this period yet. Tap "+ Add expense" when you buy feed, wire, or supplies. Rabbit sales show up on their own once you mark a rabbit sold with a price.</div>`;
+    h += `<div class="empty">Nothing here for this period yet. Tap "+ Add expense" when you buy feed, wire, or supplies, and "+ Add income" for money that isn't a rabbit sale. Rabbit sales show up on their own once you mark a rabbit sold with a price.</div>`;
   } else {
     h += activity.map(a=>{
+      if(a.type==='income' && a.manual){
+        return `<div class="card" data-editincome="${esc(a.id)}" style="padding:12px 14px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+            <div><div class="card-name" style="font-size:14px;">${esc(a.category)}</div><div class="card-sub">${a.note?esc(a.note)+' &middot; ':''}${fmtDate(a.date)}</div></div>
+            <div style="color:var(--green); font-weight:600; white-space:nowrap;">+${fmtMoney(a.amount)}</div>
+          </div></div>`;
+      }
       if(a.type==='income'){
         return `<div class="card" ${a.sub?`data-opensale="${esc(a.rabbitId)}"`:`data-openprofile="${esc(a.rabbitId)}"`} style="padding:12px 14px;">
           <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
@@ -9551,9 +9595,11 @@ function renderMoney(main){
     btn.onclick = ()=>{ currentMoneyPeriod = btn.dataset.period; render(); };
   });
   document.getElementById('moneyAddExpenseBtn').onclick = ()=>openAddExpenseSheet(null);
+  document.getElementById('moneyAddIncomeBtn').onclick = ()=>openAddIncomeSheet(null);
+  document.querySelectorAll('[data-editincome]').forEach(el=>el.addEventListener('click',ev=>{ if(ev.target.closest('button')) return; const x=otherIncome.find(i=>i.id===el.dataset.editincome); if(x) openAddIncomeSheet(x); }));
   document.getElementById('moneyExportBtn').onclick = ()=>{
     const rows = activity.map(a=> a.type==='income'
-      ? { date:a.date, type:'Income', category:'Rabbit sale', description:a.name+(a.buyer?' — Sold to '+a.buyer:''), amount:a.amount.toFixed(2) }
+      ? { date:a.date, type:'Income', category:a.manual?a.category:'Rabbit sale', description:a.manual?(a.note||''):a.name+(a.buyer?' — Sold to '+a.buyer:''), amount:a.amount.toFixed(2) }
       : { date:a.date, type:'Expense', category:a.category, description:a.note||'', amount:(-a.amount).toFixed(2) });
     downloadCSV('herdnerd-financials-'+period+'.csv', toCSV(rows, ['date','type','category','description','amount']));
   };
@@ -9582,7 +9628,7 @@ function openAddExpenseSheet(existing){
       <div class="field"><label>Amount ($)</label><input type="number" id="f-exp-amt" value="${esc(e.amount||'')}" placeholder="0.00"></div>
       <div class="field"><label>Date</label><input type="date" id="f-exp-date" value="${esc(e.date||todayStr())}"></div>
     </div>
-    <div class="field"><label>Category</label><select id="f-exp-cat">${EXPENSE_CATEGORIES.map(c=>`<option value="${esc(c)}" ${e.category===c?'selected':''}>${esc(c)}</option>`).join('')}</select></div>
+    <div class="field"><label>Category</label><select id="f-exp-cat">${catOptions(expenseCats, e.category)}</select></div>
     <div class="field"><label>Note (optional)</label><textarea id="f-exp-note">${esc(e.note||'')}</textarea></div>
     <div class="sheet-actions">
       <button class="btn btn-secondary" onclick="closeSheet()">Cancel</button>
@@ -9607,6 +9653,89 @@ function openAddExpenseSheet(existing){
     armConfirm(delBtn, 'Tap again to confirm', async ()=>{
       expenses = expenses.filter(x=>x.id!==existing.id);
       await saveExpenses(); closeSheet(); render(); showToast('Expense deleted');
+    });
+  };
+}
+function openMoneyCatsSheet(){
+  const lists={expense:expenseCats, income:incomeCats};
+  const countUse=(kind,name)=>(kind==='expense'?expenses:otherIncome).filter(x=>(x.category||'Other')===name).length;
+  const draw=()=>{
+    const block=(kind,title)=>`<div class="lit-card" style="margin-bottom:12px;"><span class="lit-label">${title} &middot; ${lists[kind].length}</span>
+      ${lists[kind].map((c,i)=>`<div class="st-row" style="padding:6px 0; display:flex; gap:6px; align-items:center;">
+        <input data-mcn="${kind}:${i}" value="${esc(c)}" style="flex:1; min-width:0;" autocomplete="off">
+        <button type="button" class="btn btn-secondary btn-sm" data-mcm="${kind}:${i}:-1" aria-label="Move up" ${i===0?'disabled':''}>&uarr;</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-mcm="${kind}:${i}:1" aria-label="Move down" ${i===lists[kind].length-1?'disabled':''}>&darr;</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-mcx="${kind}:${i}" aria-label="Remove" ${lists[kind].length<=1?'disabled':''}>&times;</button></div>`).join('')}
+      <div style="display:flex; gap:6px; margin-top:8px;"><input id="mc-new-${kind}" placeholder="${kind==='expense'?'Add an expense category':'Add an income category'}" style="flex:1; min-width:0;" autocomplete="off"><button type="button" class="btn btn-primary btn-sm" data-mca="${kind}">Add</button></div></div>`;
+    openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button><h2>Money categories</h2>
+      <div class="card-sub" style="margin-bottom:10px;">Change the names, order, or add your own. Renaming a category also renames it on your past entries. Removing one only takes it off the list: past entries keep their category and nothing is deleted.</div>
+      ${block('expense','Expense categories')}${block('income','Income categories')}
+      <div class="sheet-actions"><button class="btn btn-primary" id="mc-done" style="flex:1;">Done</button></div>`);
+    document.getElementById('mc-done').onclick=()=>closeSheet();
+    const dup=(kind,v,skip)=>lists[kind].some((x,j)=>j!==skip && x.toLowerCase()===v.toLowerCase());
+    document.querySelectorAll('[data-mcn]').forEach(inp=>inp.onchange=async()=>{
+      const [kind,is]=inp.dataset.mcn.split(':'), i=+is, old=lists[kind][i], v=inp.value.trim();
+      if(!v || v===old){ inp.value=old; return; }
+      if(dup(kind,v,i)){ showToast('You already have a category with that name'); inp.value=old; return; }
+      lists[kind][i]=v;
+      if(!(await saveMoneyCats())){ lists[kind][i]=old; inp.value=old; return; }
+      const arr=kind==='expense'?expenses:otherIncome; let n=0;
+      arr.forEach(x=>{ if((x.category||'Other')===old){ x.category=v; n++; } });
+      if(n){ await (kind==='expense'?saveExpenses():saveOtherIncome()); }
+      showToast(n?('Renamed. '+n+' past '+(n===1?'entry':'entries')+' updated'):'Renamed'); draw(); render();
+    });
+    document.querySelectorAll('[data-mcm]').forEach(b=>b.onclick=async()=>{
+      const [kind,is,ds]=b.dataset.mcm.split(':'), i=+is, j=i+(+ds), l=lists[kind];
+      if(j<0||j>=l.length) return; [l[i],l[j]]=[l[j],l[i]];
+      if(!(await saveMoneyCats())){ [l[i],l[j]]=[l[j],l[i]]; } draw();
+    });
+    document.querySelectorAll('[data-mcx]').forEach(b=>b.onclick=()=>{
+      const [kind,is]=b.dataset.mcx.split(':'), i=+is, name=lists[kind][i], n=countUse(kind,name);
+      armConfirm(b,'Tap again',async()=>{
+        const removed=lists[kind].splice(i,1)[0];
+        if(!(await saveMoneyCats())){ lists[kind].splice(i,0,removed); draw(); return; }
+        showToast(n?('Removed from the list. '+n+' past '+(n===1?'entry keeps':'entries keep')+' it'):'Removed'); draw();
+      });
+    });
+    document.querySelectorAll('[data-mca]').forEach(b=>b.onclick=async()=>{
+      const kind=b.dataset.mca, inp=document.getElementById('mc-new-'+kind), v=inp.value.trim(); if(!v) return;
+      if(dup(kind,v,-1)){ showToast('You already have a category with that name'); return; }
+      lists[kind].push(v);
+      if(!(await saveMoneyCats())){ lists[kind].pop(); return; } draw();
+    });
+  };
+  draw();
+}
+function openAddIncomeSheet(existing){
+  const e = existing || {};
+  openSheet(`<button class="close-x" onclick="closeSheet()">&times;</button>
+    <h2>${existing?'Edit income':'Add income'}</h2>
+    <div class="card-sub" style="margin-bottom:10px;">For money that isn't a rabbit or kit sale. Rabbit sales and deposits are added for you when you mark a rabbit sold.</div>
+    <div class="row2">
+      <div class="field"><label>Amount ($)</label><input type="number" id="f-inc-amt" value="${esc(e.amount||'')}" placeholder="0.00"></div>
+      <div class="field"><label>Date</label><input type="date" id="f-inc-date" value="${esc(e.date||todayStr())}"></div>
+    </div>
+    <div class="field"><label>Category</label><select id="f-inc-cat">${catOptions(incomeCats, e.category)}</select></div>
+    <div class="field"><label>Note (optional)</label><textarea id="f-inc-note">${esc(e.note||'')}</textarea></div>
+    <div class="sheet-actions">
+      <button class="btn btn-secondary" onclick="closeSheet()">Cancel</button>
+      <button class="btn btn-primary" id="f-inc-save">Save</button>
+    </div>
+    ${existing?'<button class="btn btn-danger" id="f-inc-delete" style="width:100%; margin-top:10px;">Delete</button>':''}`);
+  document.getElementById('f-inc-save').onclick = async ()=>{
+    const amt = parseFloat(document.getElementById('f-inc-amt').value);
+    if(!amt || amt<=0){ showToast('Enter an amount greater than 0'); return; }
+    const date = csvParseDate(document.getElementById('f-inc-date').value) || todayStr();
+    const category = document.getElementById('f-inc-cat').value, note = document.getElementById('f-inc-note').value.trim();
+    if(existing){ existing.amount=amt; existing.date=date; existing.category=category; existing.note=note; }
+    else otherIncome.push({ id:uid(), amount:amt, date, category, note });
+    await saveOtherIncome(); closeSheet(); render(); showToast(existing?'Income updated':'Income added');
+  };
+  const delBtn = document.getElementById('f-inc-delete');
+  if(delBtn) delBtn.onclick = ()=>{
+    armConfirm(delBtn, 'Tap again to confirm', async ()=>{
+      otherIncome = otherIncome.filter(x=>x.id!==existing.id);
+      await saveOtherIncome(); closeSheet(); render(); showToast('Income deleted');
     });
   };
 }
@@ -9997,7 +10126,7 @@ function renderBackup(main){
       const text = await new Promise(res=>{ const rd=new FileReader(); rd.onload=()=>res(rd.result); rd.onerror=()=>res(null); rd.readAsText(f); });
       const out = text ? addBackFromBackup(text) : {error:'That file could not be read.'};
       if(out.error){ showToast(out.error); return; }
-      await saveData(); await savePlanned(); await saveEvents(); await saveShows(); await saveExpenses();
+      await saveData(); await savePlanned(); await saveEvents(); await saveShows(); await saveExpenses(); await saveOtherIncome(); if(moneyCatsSafe) await saveMoneyCats();
       await saveWaitlist(); await saveProjects(); await saveTraits(); await saveQuickPicks(); await saveKitTags(); await saveReminders();
       render();
       const total = out.nr+out.np+out.ne+out.ns+out.nx+(out.nk||0);
