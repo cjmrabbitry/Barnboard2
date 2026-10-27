@@ -2351,7 +2351,7 @@ async function loadData(){
   kitTagsSafe=false; try{ const kt = JSON.parse((await window.storage.get(KIT_TAGS_KEY,false)).value); customKitTags = Array.isArray(kt)?kt.filter(x=>typeof x==='string'):DEFAULT_CUSTOM_KIT_TAGS.slice(); kitTagsSafe=Array.isArray(kt); }catch(e){ customKitTags = DEFAULT_CUSTOM_KIT_TAGS.slice(); kitTagsSafe = /not found/i.test(String(e&&e.message)); }
   projectsSafe=false; try{ const pj = JSON.parse((await window.storage.get(PROJECTS_KEY,false)).value); projects = Array.isArray(pj)?pj.filter(x=>x&&typeof x.id==='string'&&typeof x.name==='string'):[]; projectsSafe=Array.isArray(pj); }catch(e){ projects = []; projectsSafe = /not found/i.test(String(e&&e.message)); }
   traitsSafe=false; try{ const tr = JSON.parse((await window.storage.get(TRAITS_KEY,false)).value); traits = Array.isArray(tr)?tr.filter(x=>x&&typeof x.id==='string'&&typeof x.name==='string'):[]; traitsSafe=Array.isArray(tr); }catch(e){ traits = []; traitsSafe = /not found/i.test(String(e&&e.message)); }
-  alertsSafe=false; try{ const ap = JSON.parse((await window.storage.get(ALERTS_KEY,false)).value); if(ap && typeof ap==='object' && !Array.isArray(ap)){ alertPrefs={off:(ap.off&&typeof ap.off==='object')?ap.off:{},nestDays:ap.nestDays,palpateDays:ap.palpateDays}; alertsSafe=true; } else { alertPrefs={off:{},nestDays:3,palpateDays:14}; } }catch(e){ alertPrefs={off:{},nestDays:3,palpateDays:14}; alertsSafe = /not found/i.test(String(e&&e.message)); }
+  alertsSafe=false; try{ const ap = JSON.parse((await window.storage.get(ALERTS_KEY,false)).value); if(ap && typeof ap==='object' && !Array.isArray(ap)){ alertPrefs={off:(ap.off&&typeof ap.off==='object')?ap.off:{},nestDays:ap.nestDays,palpateDays:ap.palpateDays,rebreedDays:ap.rebreedDays}; alertsSafe=true; } else { alertPrefs={off:{},nestDays:3,palpateDays:14}; } }catch(e){ alertPrefs={off:{},nestDays:3,palpateDays:14}; alertsSafe = /not found/i.test(String(e&&e.message)); }
   remindersSafe=false; try{ const cr = JSON.parse((await window.storage.get(REMINDERS_KEY,false)).value); customReminders = Array.isArray(cr)?cr.filter(x=>x&&typeof x.id==='string'&&typeof x.title==='string'&&typeof x.date==='string'):[]; remindersSafe=Array.isArray(cr); }catch(e){ customReminders = []; remindersSafe = /not found/i.test(String(e&&e.message)); }
   quickPicksSafe=false; try{ const qp = JSON.parse((await window.storage.get(QUICKPICKS_KEY,false)).value); quickPicks = Array.isArray(qp)?qp.filter(x=>x&&typeof x.id==='string'&&typeof x.name==='string'):[]; quickPicksSafe=Array.isArray(qp); }catch(e){ quickPicks = []; quickPicksSafe = /not found/i.test(String(e&&e.message)); }
   trashSafe=false; try{ const tv = JSON.parse((await window.storage.get(TRASH_KEY,false)).value); trash = Array.isArray(tv) ? tv : []; trashSafe = Array.isArray(tv); }catch(e){ trash = []; trashSafe = /not found/i.test(String(e&&e.message)); }
@@ -2708,7 +2708,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-26-moneycats';
+const APP_VERSION = '2026-10-27-sixmonthweight';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -3130,11 +3130,14 @@ const ALERT_TYPES=[
   ['convert','Litter is 8 weeks old','A nursing litter still has kits to place'],
   ['reb','Ready to rebreed','A nursing doe reaches her rebreed date'],
   ['graduate','Turned 6 months','A junior moved up to Does or Bucks'],
+  ['sixwt','6-month weight','A rabbit turned 6 months and has no weight added yet'],
   ['custom','My reminders','Reminders you add yourself']
 ];
 let alertPrefs={off:{},nestDays:3,palpateDays:14}, alertsSafe=false;
 function palpateDays(){ const n=+alertPrefs.palpateDays; return (n>=7&&n<=28)?Math.round(n):14; }
 function alertOn(type){ return !(alertPrefs.off&&alertPrefs.off[type]); }
+// Days after kindling that a new litter's rebreed date is set to (default 4 weeks). Only new litters use it; dates already on a litter are never changed.
+function rebreedDays(){ const n=+alertPrefs.rebreedDays; return (n>=7&&n<=84)?Math.round(n):28; }
 function nestDays(){ const n=+alertPrefs.nestDays; return (n>=1&&n<=14)?Math.round(n):3; }
 async function saveAlertPrefs(){
   if(!alertsSafe){ showToast("Your reminder settings didn't load, so they can't be changed right now. Refresh and try again."); return false; }
@@ -3182,6 +3185,7 @@ function openRemindersSheet(){
       <div class="card-sub" style="margin-bottom:10px;">Choose what shows under Needs attention on Home.</div>
       ${ALERT_TYPES.map(([k,l,d])=>`<div class="lit-card" style="display:flex;align-items:center;gap:10px;"><div style="flex:1"><b>${l}</b><div class="card-sub">${d}</div>
         ${k==='palpate'?`<div style="margin-top:6px;font-size:13px;">Remind me <select id="al-pdays">${Array.from({length:22},(_,i)=>i+7).map(n=>`<option value="${n}" ${n===palpateDays()?'selected':''}>${n}</option>`).join('')}</select> days after she is bred</div>`:''}
+        ${k==='reb'?`<div style="margin-top:6px;font-size:13px;">Set it <select id="al-rbdays">${Array.from({length:78},(_,i)=>i+7).map(n=>`<option value="${n}" ${n===rebreedDays()?'selected':''}>${n}${n%7===0?' ('+(n/7)+(n===7?' week)':' weeks)'):''}</option>`).join('')}</select> days after she kindles</div><div class="card-sub" style="margin-top:2px;">Used for new litters. Dates already on a litter stay as they are, and you can still change any litter's date.</div>`:''}
         ${k==='nest'?`<div style="margin-top:6px;font-size:13px;">Start <select id="al-days">${Array.from({length:14},(_,i)=>i+1).map(n=>`<option value="${n}" ${n===nestDays()?'selected':''}>${n}</option>`).join('')}</select> day${nestDays()===1?'':'s'} before she is due</div>`:''}</div>
         <button type="button" class="nn-chip ${alertOn(k)?'on':''}" data-al="${k}" style="min-width:56px;">${alertOn(k)?'On':'Off'}</button></div>`).join('')}
       <div class="sheet-actions"><button class="btn btn-primary" onclick="closeSheet()">Done</button></div>`);
@@ -3195,6 +3199,11 @@ function openRemindersSheet(){
       const old=alertPrefs.palpateDays; alertPrefs.palpateDays=+pd.value;
       if(!(await saveAlertPrefs())) alertPrefs.palpateDays=old;
       draw(); render();
+    };
+    const rbd=document.getElementById('al-rbdays'); if(rbd) rbd.onchange=async()=>{
+      const old=alertPrefs.rebreedDays; alertPrefs.rebreedDays=+rbd.value;
+      if(!(await saveAlertPrefs())) alertPrefs.rebreedDays=old;
+      draw(); showToast('New litters will be set to rebreed '+rebreedDays()+' days after birth');
     };
     const dd=document.getElementById('al-days'); if(dd) dd.onchange=async()=>{
       const old=alertPrefs.nestDays; alertPrefs.nestDays=+dd.value;
@@ -3979,6 +3988,14 @@ function sixMonthDate(dob){
   const d=new Date(y,m,Math.min(b.getDate(),dim));
   return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
 }
+// A rabbit that turned 6 months within the last 30 days with no weigh-in since two weeks before that date.
+function sixMonthWeightDue(r){
+  if(r.external || !isActive(r) || !r.dob) return false;
+  const six=sixMonthDate(r.dob); if(!six) return false;
+  const t=todayStr(); if(six>t || daysBetween(six,t)>30) return false;
+  const from=addDays(six,-14);
+  return !(r.weightLog||[]).some(w=>w && w.date && w.date>=from);
+}
 function isUnderSixMonths(r){ const s=r.dob?sixMonthDate(r.dob):null; return !!s && todayStr()<s; }
 function inJuniors(r){ return isUnderSixMonths(r) && !r.movedUp && !['pregnant','nursing'].includes(r.status); }   // movedUp = she chose to move this junior up early
 function isJuniorReady(r){ return r.status==='growing' && r.dob && !isUnderSixMonths(r); }
@@ -4713,7 +4730,7 @@ function changeBornDate(r, v){
   const he=(r.breedingHistory||[]).find(x=>x.outcome==='litter' && x.litterBornDate===old);
   if(r.weanDate===addDays(old,42)) r.weanDate=addDays(v,42);       // dates you set by hand are left alone
   if(r.sellDate===addDays(old,56)) r.sellDate=addDays(v,56);
-  if(r.rebreedDate===addDays(old,28)) r.rebreedDate=addDays(v,28);
+  if(r.rebreedDate===addDays(old,rebreedDays())) r.rebreedDate=addDays(v,rebreedDays());
   r.litterBornDate=v; if(he) he.litterBornDate=v;
   (r.removedKits||[]).forEach(x=>{ if(x.litterBorn===old) x.litterBorn=v; });
   (r.litterKits||[]).forEach(k=>{ if(k.individualId){ const kr=rabbits.find(z=>z.id===k.individualId); if(kr) kr.dob=v; } });
@@ -5522,6 +5539,7 @@ function wireConvertButtons(root){
   root.querySelectorAll('[data-palpos]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.palpos); if(!r) return; setPalpate(r,'positive'); closeSheet(); render(); showToast(r.name+' palpated positive'); });
   root.querySelectorAll('[data-palunsure]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.palunsure); if(r) openPalpateLaterSheet(r); });
   root.querySelectorAll('[data-palno]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.palno); if(!r) return; armConfirm(b,'Tap again',()=>{ markLitterLost(r); saveData(); closeSheet(); render(); showToast(r.name+' moved to open does'); }); });
+  root.querySelectorAll('[data-addwt6]').forEach(b=>b.onclick=(ev)=>{ ev.stopPropagation(); const r=rabbits.find(x=>x.id===b.dataset.addwt6); if(r) openAddWeightSheet(r); });
   root.querySelectorAll('[data-weighlitter]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.weighlitter); if(r) openWeighSheet(r); });
   root.querySelectorAll('[data-convertyes]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertyes); if(r) convertLitterToIndividuals(r.id); });
   root.querySelectorAll('[data-convertno]').forEach(b=>b.onclick=()=>{ const r=rabbits.find(x=>x.id===b.dataset.convertno); if(r){ r.litterConvertAckDate=todayStr(); saveData(); render(); } });
@@ -5661,6 +5679,8 @@ function renderHome(main){
   const reb = !alertOn('reb') ? [] : rabbits.filter(r=>r.sex==='doe'&&isRebreedReady(r)&&!snoozed(r,'reb'));
   const recentGraduates = !alertOn('graduate') ? [] : rabbits.filter(r=>r.graduatedDate && !r.juniorAckDone && daysBetween(r.graduatedDate,t)<=14 && !snoozed(r,'graduate')).sort((a,b)=>a.graduatedDate.localeCompare(b.graduatedDate));
 
+  const sixwt = !alertOn('sixwt') ? [] : rabbits.filter(r=>sixMonthWeightDue(r)&&!snoozed(r,'sixwt')).sort((a,b)=>sixMonthDate(a.dob).localeCompare(sixMonthDate(b.dob)));
+
   // Build attention rows — nest box prep collapses into one group row; everything else is one row per rabbit.
   const rows = [];
   if(nest.length) rows.push({ grp:'nest', urgent:false, sortKey:-1, html: nestGroupHTML(nest) });
@@ -5706,6 +5726,14 @@ function renderHome(main){
       openId:r.id, text:`<b>${esc(r.name)}</b> turned 6 months — moved up to ${r.sex==='doe'?'Does':'Bucks'}`,
       circleId:r.id, circleType:'graduate', circleLabel:`${r.name} acknowledged`,
       snoozeId:r.id, snoozeType:'graduate'
+    })});
+  });
+  sixwt.forEach(r=>{
+    const six=sixMonthDate(r.dob), ago=daysBetween(six,t);
+    rows.push({ urgent:false, sortKey:8, html: attnRowHTML({
+      openId:r.id, text:`<b>${esc(r.name)}</b> turned 6 months — add a weight`, sub:ago<=0?'Turned 6 months today':'Turned 6 months '+(ago===1?'yesterday':ago+' days ago'),
+      buttons:`<button class="btn btn-primary btn-sm" data-addwt6="${r.id}">Add weight</button>`,
+      snoozeId:r.id, snoozeType:'sixwt'
     })});
   });
   if(litterUiOn && alertOn('weigh')) rabbits.forEach(r=>{
@@ -6347,8 +6375,8 @@ function openKindledSheet(r, editing){
   const d = r.litterDead||{DOA:0,peanut:0,passed:0};
   const born0 = editing&&r.litterBornDate ? r.litterBornDate : todayStr();
   const st = { born:born0, alive: editing?existing.length:0, doa:d.DOA||0, peanut:d.peanut||0, passed:d.passed||0,
-    rebreed: editing&&r.rebreedDate ? r.rebreedDate : addDays(born0,28),
-    touched: !!(editing && r.rebreedDate && r.rebreedDate!==addDays(born0,28)) };
+    rebreed: editing&&r.rebreedDate ? r.rebreedDate : addDays(born0,rebreedDays()),
+    touched: !!(editing && r.rebreedDate && r.rebreedDate!==addDays(born0,rebreedDays())) };
   const stepper=(key,big,min)=>`<div class="stepper ${big?'stepper-lg':''}">
       <button type="button" data-st="${key}" data-d="-1" aria-label="Fewer">&minus;</button>
       <div class="st-num" id="st-${key}">${st[key]}</div>
@@ -6388,7 +6416,7 @@ function openKindledSheet(r, editing){
     const k=b.dataset.st, min = k==='alive'?linkedCount:0;
     st[k]=Math.max(min, st[k]+(+b.dataset.d)); refresh();
   });
-  const onBorn=()=>{ const v=csvParseDate(bornEl.value); if(!v) return; st.born=v; if(!st.touched){ st.rebreed=addDays(v,28); rebEl.value=st.rebreed; } refresh(); };
+  const onBorn=()=>{ const v=csvParseDate(bornEl.value); if(!v) return; st.born=v; if(!st.touched){ st.rebreed=addDays(v,rebreedDays()); rebEl.value=st.rebreed; } refresh(); };
   const onReb=()=>{ const v=csvParseDate(rebEl.value); if(v){ st.rebreed=v; st.touched=true; refresh(); } };
   ['change','input','blur'].forEach(ev=>{ bornEl.addEventListener(ev,onBorn); rebEl.addEventListener(ev,onReb); });
   if(needsBuck) attachSuggest(document.getElementById('f-buck'), ()=>rabbits.filter(x=>x.sex==='buck'&&x.status!=='external').map(x=>x.name));
@@ -6432,7 +6460,7 @@ function openKindledSheet(r, editing){
     if(!wasEditing){ syncLitterEntry(r); r.litterLosses=[]; r.litterNotes=''; }
     r.status='nursing'; r.litterBornDate=born; r.litterKits=kits;
     r.litterDead={DOA:st.doa,peanut:st.peanut,passed:st.passed}; r.weanDate=addDays(born,42); r.sellDate=addDays(born,56);
-    r.rebreedDate=st.rebreed||addDays(born,28); r.dueDate=null; r.flag='';
+    r.rebreedDate=st.rebreed||addDays(born,rebreedDays()); r.dueDate=null; r.flag='';
     r.lastLitterSummary=litterSummaryText(r);
     r.breedingHistory = r.breedingHistory||[];
     // when editing, update the history entry for THIS litter (matched by its old birth date), not just the newest one
