@@ -2708,7 +2708,7 @@ function addBackFromBackup(text){
 // comes back to the front) this quietly asks the website for the current version number.
 // If a newer version exists it shows a small "Refresh" bar. It never reloads by itself,
 // so nobody loses what they are typing, and it never touches anyone's data.
-const APP_VERSION = '2026-10-27-sixmonthweight';
+const APP_VERSION = '2026-10-29-fillblanks';
 let updateBannerShown = false;
 async function checkForNewVersion(){
   if(updateBannerShown) return;
@@ -5576,7 +5576,7 @@ function ribbonHomeHTML(t, attnTotal){
   const due=rabbits.filter(r=>r.sex==='doe'&&r.status==='pregnant'&&r.dueDate&&isActive(r)&&daysToDue(r)<=3).sort((a,b)=>daysToDue(a)-daysToDue(b));
   const gday=r=>r.bredDate?daysBetween(r.bredDate,t):31-daysToDue(r);
   let h=`<div class="rb-hero"><div class="rb-hero-top"><span class="rb-date">${esc(dateLbl)}</span><span class="rb-brand">HerdNerd</span></div>`
-    + (attnTotal ? `<div class="rb-count"><span class="rb-n">${attnTotal}</span><span class="rb-cap">${attnTotal===1?'thing needs':'things need'}<br>you today</span></div>`
+    + (attnTotal ? `<div class="rb-count"><span class="rb-n">${attnTotal}</span><span class="rb-cap">${attnTotal===1?'task':'tasks'} waiting<br>in the barn</span></div>`
                  : `<div class="rb-count"><span class="rb-cap rb-clear">All clear today</span></div>`)
     + `</div>`;
   if(due.length===1){
@@ -10916,6 +10916,16 @@ async function commitCsvImport(){
   // after all rows exist, makes the row order in the CSV irrelevant.
   csvImportRows.forEach(row=>{
     if(row.existing && row.action==='skip'){ skipped++; return; }
+    if(row.existing && row.action==='fill'){
+      // Adds only what is missing. Anything already entered on the existing rabbit is left exactly as it is.
+      const ex=row.existing; let filled=false;
+      ['sireName','damName','color','earNumber','dob','weight','breed','registrationNumber','gcNumber','legsWins','alias'].forEach(k=>{
+        const v=row.data[k]; if(v && !ex[k]){ ex[k]=v; filled=true; }
+      });
+      if(!ex.sex && row.data.sex){ ex.sex=row.data.sex; filled=true; }
+      if(filled) updated++; else skipped++;
+      return;
+    }
     if(row.existing && row.action==='update'){
       const ex = row.existing;
       Object.keys(row.data).forEach(k=>{
@@ -11250,7 +11260,7 @@ function buildPedigreeRowsFromSlots(slots, roleOrder){
       status: data.sex==='doe' ? 'open' : 'available',
     };
     const existing = findByName(rowData.name);
-    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new', role });
+    rows.push({ data: rowData, existing, action: existing ? 'fill' : 'new', role });
   }
   return rows;
 }
@@ -11339,7 +11349,7 @@ function parseEverbreedPedigreePdf(items, viewport){
       status: data.sex==='doe' ? 'open' : 'available',
     };
     const existing = findByName(rowData.name);
-    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+    rows.push({ data: rowData, existing, action: existing ? 'fill' : 'new' });
   }
   return { ok:true, rows };
 }
@@ -11461,7 +11471,7 @@ function parseWhosDuePedigreePdf(items, viewport){
       status: data.sex==='doe' ? 'open' : 'available',
     };
     const existing = findByName(rowData.name);
-    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+    rows.push({ data: rowData, existing, action: existing ? 'fill' : 'new' });
   }
   return { ok:true, rows, breed };
 }
@@ -11549,7 +11559,7 @@ function parseWhosDueVariant2PedigreePdf(items, viewport){
       status: data.sex==='doe' ? 'open' : 'available',
     };
     const existing = findByName(rowData.name);
-    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+    rows.push({ data: rowData, existing, action: existing ? 'fill' : 'new' });
   }
   return { ok:true, rows, breed };
 }
@@ -11667,7 +11677,7 @@ function parseHerdNerdPedigreePdf(items, viewport){
     const sex = role==='SELF' ? data.sex : (PEDIGREE_MALE_ROLES.has(role)||/SIRE|^PGS$|^MGS$/.test(role) ? 'buck' : 'doe');
     rows.push({ data:{ name:data.name, sex, breed:data.breed||'', color:data.color, earNumber:data.earNumber, dob:data.dob, weight:data.weight,
       legsWins:data.legsWins, registrationNumber:data.registrationNumber, sireName:sd?sd.name:'', damName:dd?dd.name:'', notes:'', gcNumber:data.gc||'',
-      status: sex==='doe'?'open':'available' }, existing:findByName(data.name), action: findByName(data.name)?'skip':'new' });
+      status: sex==='doe'?'open':'available' }, existing:findByName(data.name), action: findByName(data.name)?'fill':'new' });
   }
   return { ok:true, rows };
 }
@@ -11824,7 +11834,7 @@ async function parsePedigreePdf(arrayBuffer){
       status: data.sex==='doe' ? 'open' : 'available',
     };
     const existing = findByName(rowData.name);
-    rows.push({ data: rowData, existing, action: existing ? 'skip' : 'new' });
+    rows.push({ data: rowData, existing, action: existing ? 'fill' : 'new' });
   }
   return { ok:true, rows, breed };
 }
@@ -12120,11 +12130,11 @@ function renderPedigreeBatchPreview(fileReports){
         <div class="card-name" style="font-size:14px;">${esc(d.name)}${row.seenIn>1?` <span style="font-weight:400; opacity:.6; font-size:11px;">(in ${row.seenIn} pedigrees)</span>`:''}</div>
         <div class="card-sub">${detailBits||'<span style="opacity:.6;">No details on this one besides its name</span>'}</div>
         <div style="display:flex; align-items:center; gap:6px; margin-top:6px;"><span style="font-size:12px; opacity:.7;">Breed${row.breedAssumed?' (assumed)':''}</span><input type="text" data-pedbreed="${i}" value="${esc(d.breed||'')}" placeholder="Breed" style="flex:1; min-width:0; height:34px;"></div>
-        ${row.existing?`<div class="card-sub" style="margin-top:2px;">Matches existing rabbit · ${esc(row.existing.status)}</div>`:''}
+        ${row.existing?`<div class="card-sub" style="margin-top:2px;">Matches existing rabbit · ${esc(row.existing.status)} · Fill blanks adds only what is missing</div>`:''}
       </div></div>
       <div class="seg" style="margin-top:8px;" data-pedbatchrow="${i}">
         <button data-v="skip" class="${row.action==='skip'?'on':''}">Skip</button>
-        ${row.existing?`<button data-v="update" class="${row.action==='update'?'on':''}">Update</button>`:''}
+        ${row.existing?`<button data-v="fill" class="${row.action==='fill'?'on':''}">Fill blanks</button><button data-v="update" class="${row.action==='update'?'on':''}">Update</button>`:''}
         <button data-v="new" class="${row.action==='new'?'on':''}">${row.existing?'Import as new':'Import'}</button>
       </div>
       <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-top:8px;"><input type="checkbox" data-pedherd="${i}" ${row.isSelf?'checked':''}> Add to my herd (unchecked = pedigree-only ancestor)</label>
@@ -12136,6 +12146,7 @@ function renderPedigreeBatchPreview(fileReports){
     ${pedigreeBatchFileReportHTML(fileReports)}
     <div class="row2" style="margin:10px 0;">
       <button class="btn btn-secondary btn-sm" id="pedBatchSkipAll">Skip all matches</button>
+      <button class="btn btn-secondary btn-sm" id="pedBatchFillAll">Fill blanks on all matches</button>
       <button class="btn btn-secondary btn-sm" id="pedBatchUpdateAll">Update all matches</button>
     </div>
     <div class="field"><label>Breed for every rabbit the PDF left blank (you can change any one below)</label><input type="text" id="pedBatchBreed" value="${esc(csvImportRows._defaultBreed||'')}" placeholder="e.g. Holland Lop"></div>
@@ -12158,6 +12169,7 @@ function renderPedigreeBatchPreview(fileReports){
     renderPedigreeBatchPreview(fileReports);
   };
   document.getElementById('pedBatchSkipAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='skip'; }); renderPedigreeBatchPreview(fileReports); };
+  document.getElementById('pedBatchFillAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='fill'; }); renderPedigreeBatchPreview(fileReports); };
   document.getElementById('pedBatchUpdateAll').onclick = ()=>{ csvImportRows.forEach(r=>{ if(r.existing) r.action='update'; }); renderPedigreeBatchPreview(fileReports); };
   document.getElementById('pedBatchFilter').oninput = (e)=>{
     const q = e.target.value.trim().toLowerCase();
